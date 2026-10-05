@@ -10,10 +10,10 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  # Crear el sitio Pages (POST /repos/{owner}/{repo}/pages) necesita
-  # "administration", no basta con "pages". Sin esto, enablement: true falla con
-  # "Resource not accessible by integration".
-  administration: write
+  # OJO: "administration" NO es una clave válida aquí (el run 37360404732 falló
+  # en 0 s por eso). El GITHUB_TOKEN no puede crear el sitio Pages, así que
+  # hace falta activarlo una vez a mano: Settings -> Pages -> Source: GitHub
+  # Actions. A partir de ahí este workflow funciona solo.
 
 # Un solo despliegue a la vez; si llega otro, se cancela el anterior.
 concurrency:

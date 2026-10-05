@@ -146,14 +146,27 @@ objetivo para probar balance, y reset de partida con confirmación.
 
 ## Publicar en GitHub Pages
 
-No hay ningún paso manual: el workflow activa Pages por su cuenta.
+**Hace falta un paso manual, una sola vez.** No se puede automatizar: crear el
+sitio Pages exige el scope `administration`, y ese scope **no existe** para el
+`GITHUB_TOKEN` de un workflow.
 
-1. Fusiona en `main`. El workflow `.github/workflows/deploy.yml` se dispara solo.
-2. `actions/configure-pages` va con `enablement: true`, así que **activa Pages la
-   primera vez** sin tener que entrar en Settings. (Sin ese parámetro la acción
-   falla con `Get Pages site failed` hasta que alguien elige *GitHub Actions* a
-   mano en Settings → Pages; fue exactamente lo que pasó en el primer intento.)
+1. **Settings → Pages → Build and deployment → Source**: elige **GitHub Actions**.
+2. Vuelve a lanzar el workflow (pestaña *Actions* → *Desplegar en GitHub Pages* →
+   *Run workflow*), o fusiona cualquier cambio en `main`.
 3. El juego queda en `https://<usuario>.github.io/tycoon-idle/`.
+
+Está comprobado, no es una suposición — se intentó automatizar dos veces:
+
+| Intento | Resultado |
+| --- | --- |
+| `configure-pages` a secas (run `37359910644`) | `Not Found` — el sitio no existe |
+| con `enablement: true` (run `37360195723`) | `Resource not accessible by integration` al crearlo |
+| con `administration: write` (run `37360404732`) | el run falla en 0 s: esa clave no es válida |
+| `gh api ... -X POST -f build_type=workflow` con credenciales de usuario | `403 Resource not accessible by integration` |
+
+Todo lo demás sí está verificado en runner limpio: `npm ci`, `npm run check`
+(tipos + 118 tests + build) y `npm run build` pasan en verde antes del paso de
+Pages.
 
 Qué hace el workflow: `npm ci` → `npm run check` (tipos + tests + build) → sube `dist/` con
 `actions/upload-pages-artifact` → publica con `actions/deploy-pages`. **No se publica nada que no
