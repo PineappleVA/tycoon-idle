@@ -21,7 +21,7 @@ interface Rect {
   height: number;
 }
 
-type Accent = 'amber' | 'fuchsia' | 'emerald';
+type Accent = 'amber' | 'fuchsia' | 'emerald' | 'sky';
 
 const ACCENTS: Record<Accent, { ring: string; text: string; chip: string; btn: string }> = {
   amber: {
@@ -41,6 +41,12 @@ const ACCENTS: Record<Accent, { ring: string; text: string; chip: string; btn: s
     text: 'text-emerald-200',
     chip: 'bg-emerald-400/15',
     btn: 'from-emerald-400 to-teal-500',
+  },
+  sky: {
+    ring: 'rgba(56,189,248,0.95)',
+    text: 'text-sky-200',
+    chip: 'bg-sky-400/15',
+    btn: 'from-sky-400 to-indigo-500',
   },
 };
 

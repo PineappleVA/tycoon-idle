@@ -209,7 +209,7 @@ export function BusinessDetail({
                     return (
                       <button
                         key={n}
-                        onClick={() => game.upgradeBulk(def.id, n)}
+                        onClick={() => game.upgrade(def.id, n)}
                         disabled={!can}
                         className="rounded-lg bg-amber-500/90 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                       >

@@ -421,3 +421,170 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(250, 204, 21, 0.4) transparent;
 }
+
+/* ================================================================== */
+/* Feedback de interacción                                            */
+/* ================================================================== */
+
+/* Onda que se expande desde el punto exacto del toque. */
+@keyframes tapRipple {
+  0% {
+    opacity: 0.85;
+    transform: scale(0.25);
+  }
+  70% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+/* Destello verde de la tarjeta cuando suben las unidades compradas. */
+@keyframes purchaseFlash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
+    background-color: rgba(16, 185, 129, 0.22);
+  }
+  100% {
+    box-shadow: 0 0 0 18px rgba(52, 211, 153, 0);
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.animate-purchase-flash {
+  animation: purchaseFlash 0.42s ease-out both;
+}
+
+/* Sello "PAGADO" del recibo: entra de golpe y rebota. */
+@keyframes stampIn {
+  0% {
+    opacity: 0;
+    transform: rotate(6deg) scale(2.4);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(6deg) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(6deg) scale(1);
+  }
+}
+
+.animate-stamp {
+  animation: stampIn 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) 1.1s both;
+}
+
+/* Barrido de brillo, para resaltar elementos recién desbloqueados. */
+@keyframes sweepShine {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-18deg);
+  }
+}
+
+.animate-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  animation: sweepShine 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Entrada deslizante con rebote suave, para listas escalonadas. */
+@keyframes slideUpIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUpIn 0.32s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+/* ================================================================== */
+/* Detalles de interfaz                                               */
+/* ================================================================== */
+
+::selection {
+  background: rgba(251, 191, 36, 0.3);
+  color: #fff;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* El foco por teclado siempre visible; el de ratón no molesta. */
+:focus-visible {
+  outline: 2px solid rgba(251, 191, 36, 0.8);
+  outline-offset: 2px;
+}
+
+/* Botones: sin resaltado azul al tocar en móvil. */
+button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ================================================================== */
+/* Accesibilidad: movimiento reducido                                 */
+/* ================================================================== */
+
+/*
+ * Con "reduce motion" activo se desactivan las animaciones decorativas.
+ * Se conservan las transiciones de color/opacidad (no provocan mareo) para
+ * que la interfaz siga dando feedback, y se mantienen visibles los estados
+ * finales: `both` en la mayoría de keyframes ya deja el elemento en su
+ * posición destino, así que nada queda oculto.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Las animaciones de entrada parten de opacity: 0; hay que forzar el final. */
+  .animate-rise,
+  .animate-pop,
+  .animate-slide-up,
+  .animate-toast,
+  .animate-ufoIn,
+  .animate-npcRise,
+  .animate-fadeInFast,
+  .animate-print,
+  .animate-stamp {
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+}
