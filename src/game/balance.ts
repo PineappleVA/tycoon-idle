@@ -147,3 +147,66 @@ export const ACHIEVEMENT_BONUS_PER = 0.02;
 export const TOAST_MS = 4_500;
 /** Máximo de avisos simultáneos: el resto se descarta para no tapar el juego. */
 export const MAX_TOASTS = 4;
+
+/* ------------------------------------------------------------------ */
+/* Toque activo: que jugar con la mano siga importando siempre         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Fracción del ingreso por segundo que regala cada toque.
+ *
+ * Sin esto el toque muere en el primer minuto: con $1 por toque y negocios
+ * dando miles por segundo, jugar activamente deja de tener sentido. Con esta
+ * fracción un toque siempre equivale a una parte de un segundo de producción,
+ * así que la mano sigue siendo útil en toda la partida.
+ */
+export const TAP_INCOME_FRACTION = 0.12;
+
+/** Puntos de combo para llegar al bonus máximo. */
+export const COMBO_MAX = 40;
+
+/** Bonus de toque por cada punto de combo (hasta +80 %). */
+export const COMBO_BONUS_PER = 0.02;
+
+/** Milisegundos sin tocar tras los que el combo se pierde. */
+export const COMBO_WINDOW_MS = 1_600;
+
+/** Probabilidad de que un toque sea crítico. */
+export const CRIT_CHANCE = 0.06;
+
+/** Multiplicador de un toque crítico. */
+export const CRIT_MULT = 12;
+
+/* ------------------------------------------------------------------ */
+/* Hitos de negocio                                                    */
+/* ------------------------------------------------------------------ */
+
+/** Cada cuántas unidades del mismo negocio se alcanza un hito. */
+export const MILESTONE_EVERY = 25;
+
+/** Bonus de ingreso de ESE negocio por cada hito alcanzado. */
+export const MILESTONE_BONUS = 0.1;
+
+/** Tope de hitos que cuentan (evita que se desboque). */
+export const MILESTONE_MAX = 20;
+
+/* ------------------------------------------------------------------ */
+/* Evento de suerte: el maletín                                        */
+/* ------------------------------------------------------------------ */
+
+/** Intervalo entre apariciones del maletín. */
+export const LUCK_MIN_MS = 70_000;
+export const LUCK_MAX_MS = 150_000;
+
+/** Cuánto tiempo se queda en pantalla si no lo pillas. */
+export const LUCK_LIFE_MS = 13_000;
+
+/* Recompensas posibles (se elige una al azar al pillarlo). */
+/** "Fiebre": multiplica todo el ingreso durante un rato. */
+export const FEVER_MULT = 7;
+export const FEVER_MS = 30_000;
+/** "Toque de Midas": multiplica el valor del toque. */
+export const MIDAS_TAP_MULT = 20;
+export const MIDAS_MS = 20_000;
+/** "Golpe de suerte": segundos de ingreso que se cobran al instante. */
+export const WINDFALL_SECONDS = 900;

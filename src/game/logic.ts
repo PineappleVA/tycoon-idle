@@ -7,6 +7,9 @@ import {
   INVESTOR_BONUS_PER,
   INVESTOR_PER_EARNED,
   MANAGER_COST,
+  MILESTONE_BONUS,
+  MILESTONE_EVERY,
+  MILESTONE_MAX,
   MANAGER_MAX_BUYS_PER_TICK,
   OFFLINE_CAP_MS,
   OFFLINE_CAP_RELIC_MULT,
@@ -19,6 +22,7 @@ import {
   SOULS_MIN_PER_FALL,
   STAR_BONUS_PER,
   TAP_BASE_VALUE,
+  TAP_INCOME_FRACTION,
   TICK_MAX_DELTA_MS,
   TAP_UPGRADE_BASE_COST,
   TAP_UPGRADE_COST_GROWTH,
@@ -605,18 +609,36 @@ export function businessBaseIncome(def: BusinessDef, count: number, upgradeLevel
   return count * def.baseIncome * Math.pow(UPGRADE_INCOME_MULT, upgradeLevel);
 }
 
+/**
+ * Hitos de negocio: cada MILESTONE_EVERY unidades el negocio rinde un poco más.
+ * Da una razón para seguir invirtiendo en lo que ya tienes en vez de correr a
+ * desbloquear el siguiente, que es lo que aplana la curva a mitad partida.
+ */
+export function milestonesReached(count: number): number {
+  return Math.min(MILESTONE_MAX, Math.floor(Math.max(0, count) / MILESTONE_EVERY));
+}
+
+export function milestoneMultiplier(count: number): number {
+  return 1 + milestonesReached(count) * MILESTONE_BONUS;
+}
+
 export function businessIncome(def: BusinessDef, state: GameState): number {
-  const base = businessBaseIncome(def, businessCount(state, def.id), businessUpgrade(state, def.id));
-  return base * plotBonusForBusiness(state, def.id) * rebirthMultiplier(state);
+  const count = businessCount(state, def.id);
+  const base = businessBaseIncome(def, count, businessUpgrade(state, def.id));
+  return (
+    base *
+    plotBonusForBusiness(state, def.id) *
+    milestoneMultiplier(count) *
+    rebirthMultiplier(state)
+  );
 }
 
 export function totalIncome(state: GameState): number {
   let sum = 0;
-  for (const def of BUSINESSES) {
-    const base = businessBaseIncome(def, businessCount(state, def.id), businessUpgrade(state, def.id));
-    sum += base * plotBonusForBusiness(state, def.id);
-  }
-  return sum * rebirthMultiplier(state) * achievementMultiplier(state);
+  for (const def of BUSINESSES) sum += businessIncome(def, state);
+  // businessIncome ya incluye parcelas, hitos y prestigio; aquí sólo falta el
+  // bonus global de logros.
+  return sum * achievementMultiplier(state);
 }
 
 /**
@@ -634,8 +656,14 @@ export function achievementMultiplier(state: GameState): number {
   return 1 + achievementsUnlocked(state) * ACHIEVEMENT_BONUS_PER;
 }
 
+/**
+ * Valor de un toque. Suma una parte "manual" (que escala con el prestigio) y
+ * una fracción del ingreso por segundo: así el toque nunca se queda obsoleto y
+ * jugar activamente sigue pagando en el endgame.
+ */
 export function tapValue(state: GameState): number {
-  return (TAP_BASE_VALUE + state.tapLevel * TAP_VALUE_PER_LEVEL) * rebirthMultiplier(state);
+  const manual = (TAP_BASE_VALUE + state.tapLevel * TAP_VALUE_PER_LEVEL) * rebirthMultiplier(state);
+  return manual + totalIncome(state) * TAP_INCOME_FRACTION;
 }
 
 /* ================================================================== */
@@ -719,8 +747,10 @@ export function runManagers(state: GameState): GameState {
 /* ================================================================== */
 
 /** Un toque: suma el valor del toque. */
-export function applyTap(state: GameState): GameState {
-  return { ...earn(state, tapValue(state)), taps: state.taps + 1 };
+/** Aplica un toque. `mult` lleva el combo, el crítico y los buffs activos. */
+export function applyTap(state: GameState, mult = 1): GameState {
+  const safe = Number.isFinite(mult) && mult > 0 ? mult : 1;
+  return { ...earn(state, tapValue(state) * safe), taps: state.taps + 1 };
 }
 
 /**
@@ -776,10 +806,16 @@ export function upgradeTap(state: GameState): GameState | null {
  * (pestaña en segundo plano, equipo cargado) el dinero no se pierde, y el tope
  * TICK_MAX_DELTA_MS evita saltos enormes — de eso se ocupa el cálculo offline.
  */
-export function tickIncome(state: GameState, deltaMs: number): GameState {
+/**
+ * @param mult multiplicador temporal (buff de Fiebre). No se guarda en el
+ *   estado: los buffs son de sesión y no deben colarse en la partida ni en los
+ *   logros, que siguen siendo puros.
+ */
+export function tickIncome(state: GameState, deltaMs: number, mult = 1): GameState {
   const clamped = Math.min(Math.max(0, deltaMs), TICK_MAX_DELTA_MS);
   if (clamped <= 0) return state;
-  const earned = earn(state, totalIncome(state) * (clamped / 1000));
+  const safe = Number.isFinite(mult) && mult > 0 ? mult : 1;
+  const earned = earn(state, totalIncome(state) * safe * (clamped / 1000));
   // La duración se acumula aunque no haya ingresos: un jugador sin negocios
   // también está jugando.
   return { ...earned, runDurationMs: state.runDurationMs + clamped };

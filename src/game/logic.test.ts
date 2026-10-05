@@ -5,6 +5,12 @@ import {
   HEAVEN_CHANCE,
   INVESTOR_PER_EARNED,
   MANAGER_COST,
+  TAP_BASE_VALUE,
+  CRIT_MULT,
+  TAP_INCOME_FRACTION,
+  MILESTONE_MAX,
+  MILESTONE_EVERY,
+  MILESTONE_BONUS,
   OFFLINE_CAP_MS,
   OFFLINE_RATE,
   OFFLINE_REDUCED_RATE,
@@ -29,6 +35,7 @@ import {
   bulkCost,
   bulkUpgradeCost,
   businessCount,
+  businessIncome,
   buyBusiness,
   canRebirth,
   claimOffline,
@@ -60,6 +67,8 @@ import {
   upgradeTap,
   achievementMultiplier,
   achievementsUnlocked,
+  milestoneMultiplier,
+  milestonesReached,
 } from './logic';
 
 /** Estado de partida rica, reutilizado por varios bloques. */
@@ -587,5 +596,73 @@ describe('bonus de logros', () => {
     const despues = applyAlienRebirth(antes, 5, false);
     expect(achievementsUnlocked(despues)).toBeGreaterThan(0);
     expect(achievementMultiplier(despues)).toBeGreaterThan(1);
+  });
+});
+
+describe('loop de juego: toque, hitos y buffs', () => {
+  it('el toque nunca se queda obsoleto: escala con el ingreso', () => {
+    const pobre: GameState = { ...DEFAULT_STATE, businesses: { lemonade: 1 } };
+    const rico: GameState = { ...DEFAULT_STATE, businesses: { lemonade: 5_000, rocket: 500 } };
+    expect(totalIncome(rico)).toBeGreaterThan(totalIncome(pobre) * 1000);
+    // El toque crece en la misma proporción, no se queda en $1 para siempre.
+    expect(tapValue(rico)).toBeGreaterThan(tapValue(pobre) * 1000);
+    expect(tapValue(rico)).toBeCloseTo(
+      totalIncome(rico) * TAP_INCOME_FRACTION + TAP_BASE_VALUE, 6);
+  });
+
+  it('applyTap aplica el multiplicador de combo/crítico', () => {
+    const s: GameState = { ...DEFAULT_STATE, businesses: { lemonade: 100 } };
+    const normal = applyTap(s);
+    const critico = applyTap(s, CRIT_MULT);
+    expect(critico.cash).toBeCloseTo(s.cash + tapValue(s) * CRIT_MULT, 6);
+    expect(critico.cash).toBeGreaterThan(normal.cash);
+    // Un multiplicador inválido no puede romper el estado.
+    expect(applyTap(s, NaN).cash).toBe(normal.cash);
+    expect(applyTap(s, -5).cash).toBe(normal.cash);
+    expect(applyTap(s, CRIT_MULT).taps).toBe(1);
+  });
+
+  it('los hitos dan +10% cada 25 unidades y tienen tope', () => {
+    expect(milestonesReached(0)).toBe(0);
+    expect(milestonesReached(24)).toBe(0);
+    expect(milestonesReached(25)).toBe(1);
+    expect(milestonesReached(50)).toBe(2);
+    expect(milestoneMultiplier(50)).toBeCloseTo(1 + 2 * MILESTONE_BONUS, 10);
+    // Acotado: no puede crecer sin límite.
+    expect(milestonesReached(1e9)).toBe(MILESTONE_MAX);
+    expect(milestoneMultiplier(1e9)).toBeCloseTo(1 + MILESTONE_MAX * MILESTONE_BONUS, 10);
+  });
+
+  it('los hitos entran en el ingreso del negocio y en el total', () => {
+    const sinHito: GameState = { ...DEFAULT_STATE, businesses: { lemonade: 24 } };
+    const conHito: GameState = { ...DEFAULT_STATE, businesses: { lemonade: 25 } };
+    const def = BUSINESSES[0];
+    // 25 unidades rinden más que 24 incluso descontando la unidad extra.
+    expect(businessIncome(def, conHito) / businessIncome(def, sinHito)).toBeCloseTo(
+      (25 / 24) * (1 + MILESTONE_BONUS), 10);
+    expect(totalIncome(conHito)).toBeGreaterThan(totalIncome(sinHito) * (25 / 24));
+  });
+
+  it('el buff de Fiebre multiplica el tick sin tocarse la partida', () => {
+    const s: GameState = { ...DEFAULT_STATE, businesses: { lemonade: 100 } };
+    const normal = tickIncome(s, 1_000);
+    const fiebre = tickIncome(s, 1_000, 7);
+    expect(fiebre.cash).toBeCloseTo(s.cash + totalIncome(s) * 7, 6);
+    expect(fiebre.cash).toBeCloseTo(normal.cash * 7, 6);
+    // El multiplicador no se guarda en ningún campo: el estado sigue siendo puro.
+    expect(Object.keys(fiebre).sort()).toEqual(Object.keys(normal).sort());
+    expect(tickIncome(s, 1_000, NaN).cash).toBe(normal.cash);
+  });
+
+  it('cada hito es un objetivo alcanzable: el coste de 25 unidades más es finito', () => {
+    // El loop no debe tener un muro: seguir comprando siempre es posible.
+    const s: GameState = { ...DEFAULT_STATE, cash: Infinity, businesses: { lemonade: 0 } };
+    let cur = s;
+    for (let i = 0; i < MILESTONE_EVERY; i++) {
+      const next = buyBusiness(cur, 'lemonade', 1);
+      expect(next, `compra ${i + 1}`).not.toBeNull();
+      cur = next!;
+    }
+    expect(milestonesReached(businessCount(cur, 'lemonade'))).toBe(1);
   });
 });

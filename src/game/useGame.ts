@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  COMBO_BONUS_PER,
+  COMBO_MAX,
+  COMBO_WINDOW_MS,
+  CRIT_CHANCE,
+  CRIT_MULT,
+  FEVER_MS,
+  FEVER_MULT,
+  LUCK_LIFE_MS,
+  LUCK_MAX_MS,
+  LUCK_MIN_MS,
   MANAGER_TICK_MS,
+  MIDAS_MS,
+  MIDAS_TAP_MULT,
+  WINDFALL_SECONDS,
   MAX_TOASTS,
   OFFLINE_MIN_MS,
   SAVE_INTERVAL_MS,
@@ -45,6 +58,25 @@ import {
 } from './logic';
 
 export type BuyAmount = 1 | 10 | 100 | 1000 | 'max';
+
+export type BuffKind = 'fever' | 'midas';
+
+export interface Buff {
+  kind: BuffKind;
+  mult: number;
+  /** Instante (Date.now) en que caduca. Son de sesión: no se guardan. */
+  until: number;
+}
+
+/** Recompensa del maletín de suerte. */
+export type LuckReward = 'fever' | 'midas' | 'windfall';
+
+export interface TapFx {
+  /** Multiplicador total aplicado (combo x crítico x buffs). */
+  mult: number;
+  crit: boolean;
+  combo: number;
+}
 
 /** Negocio que usa el panel de debug para fijar un ingreso objetivo. */
 const DEBUG_BUSINESS = 'lemonade';
@@ -118,6 +150,56 @@ export function useGame() {
   /* -------------------------------------------------------------- */
   /* Bucles de juego                                                 */
   /* -------------------------------------------------------------- */
+  /* Buffs de sesión (Fiebre, Midas)                                 */
+  /* -------------------------------------------------------------- */
+  // No viven en GameState a propósito: son efímeros y no deben colarse en la
+  // partida guardada ni en los logros, que siguen siendo puros.
+  const buffsRef = useRef<Buff[]>([]);
+  const [buffs, setBuffs] = useState<Buff[]>([]);
+
+  const buffMult = useCallback((kind: BuffKind) => {
+    const now = Date.now();
+    let m = 1;
+    for (const b of buffsRef.current) if (b.kind === kind && b.until > now) m *= b.mult;
+    return m;
+  }, []);
+
+  const addBuff = useCallback((kind: BuffKind, mult: number, ms: number) => {
+    const now = Date.now();
+    const next = [...buffsRef.current.filter((b) => b.until > now), { kind, mult, until: now + ms }];
+    buffsRef.current = next;
+    setBuffs(next);
+  }, []);
+
+  // Poda los caducados para que la barra de buffs no muestre fantasmas.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      if (buffsRef.current.some((b) => b.until <= now)) {
+        const next = buffsRef.current.filter((b) => b.until > now);
+        buffsRef.current = next;
+        setBuffs(next);
+      }
+    }, 250);
+    return () => window.clearInterval(id);
+  }, []);
+
+  /* -------------------------------------------------------------- */
+  /* Combo y críticos: que tocar rápido y seguido tenga premio        */
+  /* -------------------------------------------------------------- */
+  const comboRef = useRef(0);
+  const lastTapAt = useRef(0);
+  const [combo, setCombo] = useState(0);
+  const [tapFx, setTapFx] = useState<TapFx | null>(null);
+
+  /* -------------------------------------------------------------- */
+  /* Maletín de suerte                                               */
+  /* -------------------------------------------------------------- */
+  const luckRef = useRef(false);
+  const [luck, setLuck] = useState(false);
+  const [lastLuck, setLastLuck] = useState<LuckReward | null>(null);
+
+  /* -------------------------------------------------------------- */
   // Ingresos con delta-time real: si el navegador retrasa el intervalo,
   // el dinero no se pierde.
   useEffect(() => {
@@ -126,10 +208,10 @@ export function useGame() {
       const now = performance.now();
       const delta = now - last;
       last = now;
-      setState((s) => tickIncome(s, delta));
+      setState((s) => tickIncome(s, delta, buffMult('fever')));
     }, TICK_MS);
     return () => window.clearInterval(id);
-  }, []);
+  }, [buffMult]);
 
   // Mánagers: compran unidades (y mejoras con el Capataz Infernal).
   useEffect(() => {
@@ -179,7 +261,74 @@ export function useGame() {
   /* -------------------------------------------------------------- */
   /* Acciones                                                        */
   /* -------------------------------------------------------------- */
-  const tap = useCallback(() => setState(applyTap), []);
+  const tap = useCallback(() => {
+    const now = Date.now();
+    // El combo sólo sube si encadenas toques dentro de la ventana.
+    const next =
+      now - lastTapAt.current <= COMBO_WINDOW_MS ? Math.min(COMBO_MAX, comboRef.current + 1) : 1;
+    comboRef.current = next;
+    lastTapAt.current = now;
+    setCombo(next);
+
+    const crit = Math.random() < CRIT_CHANCE;
+    const mult = (1 + (next - 1) * COMBO_BONUS_PER) * (crit ? CRIT_MULT : 1) * buffMult('midas');
+    const fx: TapFx = { mult, crit, combo: next };
+    setTapFx(fx);
+    setState((s) => applyTap(s, mult));
+    // Se devuelve para que el panel pinte el número exacto de ESE toque: si lo
+    // leyera del estado llegaría un render tarde.
+    return fx;
+  }, [buffMult]);
+
+  // El combo decae en cuanto dejas de tocar.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (comboRef.current > 0 && Date.now() - lastTapAt.current > COMBO_WINDOW_MS) {
+        comboRef.current = 0;
+        setCombo(0);
+      }
+    }, 250);
+    return () => window.clearInterval(id);
+  }, []);
+
+  /**
+   * El maletín aparece cada cierto tiempo y se va si no lo pillas. Es el gancho
+   * clásico de los idle: una razón para mirar la pantalla en vez de dejarla
+   * corriendo en segundo plano.
+   */
+  useEffect(() => {
+    const roll = () => LUCK_MIN_MS + Math.random() * (LUCK_MAX_MS - LUCK_MIN_MS);
+    let life = 0;
+    let timer = 0;
+    const appear = () => {
+      luckRef.current = true;
+      setLuck(true);
+      life = window.setTimeout(() => {
+        luckRef.current = false;
+        setLuck(false);
+      }, LUCK_LIFE_MS);
+      timer = window.setTimeout(appear, roll());
+    };
+    timer = window.setTimeout(appear, roll());
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(life);
+    };
+  }, []);
+
+  /** Recoge el maletín. Devuelve la recompensa para que la UI la celebre. */
+  const grabLuck = useCallback(() => {
+    if (!luckRef.current) return null;
+    luckRef.current = false;
+    setLuck(false);
+    const r = Math.random();
+    const reward: LuckReward = r < 0.4 ? 'fever' : r < 0.75 ? 'midas' : 'windfall';
+    if (reward === 'fever') addBuff('fever', FEVER_MULT, FEVER_MS);
+    else if (reward === 'midas') addBuff('midas', MIDAS_TAP_MULT, MIDAS_MS);
+    else setState((s) => earn(s, totalIncome(s) * WINDFALL_SECONDS));
+    setLastLuck(reward);
+    return reward;
+  }, [addBuff]);
 
   const buy = useCallback(
     (id: string) =>
@@ -364,6 +513,12 @@ export function useGame() {
     state,
     income,
     tapWorth,
+    combo,
+    tapFx,
+    buffs,
+    luck,
+    lastLuck,
+    grabLuck,
     offline,
     buyAmount,
     setBuyAmount,

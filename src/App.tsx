@@ -19,6 +19,7 @@ import { BusinessDetail } from './components/BusinessDetail';
 import { Celebration } from './components/Celebration';
 import { BusinessTab } from './components/BusinessTab';
 import { DebugPanel } from './components/DebugPanel';
+import { LuckyBriefcase } from './components/LuckyBriefcase';
 import { OfflineInvoice } from './components/OfflineInvoice';
 import { QuickStats } from './components/QuickStats';
 import { RebirthAnimation } from './components/RebirthAnimation';
@@ -189,6 +190,7 @@ export default function App() {
   return (
     <div className="relative min-h-screen text-slate-100">
       <Background />
+      <LuckyBriefcase active={game.luck} onGrab={game.grabLuck} />
       <Celebration trigger={celebration} />
       <Toasts toasts={game.toasts} />
 
@@ -197,7 +199,15 @@ export default function App() {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[340px_1fr]">
           <div className="space-y-4">
-            <TapPanel ref={tapRef} onTap={game.tap} tapWorth={game.tapWorth} income={game.income} tapLevel={state.tapLevel} />
+            <TapPanel
+              ref={tapRef}
+              onTap={game.tap}
+              tapWorth={game.tapWorth}
+              income={game.income}
+              tapLevel={state.tapLevel}
+              combo={game.combo}
+              buffs={game.buffs}
+            />
             <QuickStats state={state} income={game.income} />
           </div>
 

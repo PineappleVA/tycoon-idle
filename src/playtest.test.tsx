@@ -78,6 +78,16 @@ function clickTab(label: string) {
   click(tab!);
 }
 
+/** Lee "$10.00K" / "$1.2M" y devuelve el número. No depende de los decimales. */
+function parseMoney(text: string): number {
+  const m = text.match(/\$?([\d.,]+)\s*([KMBTQ]?)/);
+  if (!m) return NaN;
+  // formatMoney escribe "$10.00K": el punto es decimal, no separador de millares.
+  const n = Number(m[1].replace(',', '.'));
+  const mult = { '': 1, K: 1e3, M: 1e6, B: 1e9, T: 1e12, Q: 1e15 }[m[2] as ''];
+  return n * (mult ?? 1);
+}
+
 function buttonByText(re: RegExp): HTMLElement | null {
   const found = screen
     .queryAllByRole('button')
@@ -201,6 +211,82 @@ describe('playtest', () => {
     clickTab('Logros');
     advance(400);
     expect(screen.queryByText('¡Nuevo!'), 'debe marcarse el logro de esta sesión').not.toBeNull();
+  });
+
+  it('encadenar toques sube el combo y cada toque vale más', () => {
+    seedSave({ cash: 1_000, totalEarned: 1_000, lifetimeEarned: 1_000, businesses: { lemonade: 10 } });
+    render(<App />);
+    advance(800);
+
+    const tap = screen.getByLabelText('Toca para trabajar');
+    // El medidor siempre está montado (para poder desvanecerse), así que se
+    // comprueba su estado accesible, no su presencia.
+    const meter = () => screen.getByText(/Combo x/).closest('div')!;
+
+    click(tap);
+    advance(100);
+    expect(meter().getAttribute('aria-hidden'), 'con 1 toque el combo está oculto').toBe('true');
+
+    for (let i = 0; i < 10; i++) {
+      click(tap);
+      advance(100); // dentro de la ventana de combo (1,6 s)
+    }
+    expect(meter().getAttribute('aria-hidden')).toBe('false');
+    expect(meter().textContent).toMatch(/Combo x1\.[1-9]/);
+
+    // Y si dejas de tocar, el combo se cae.
+    advance(3_000);
+    expect(meter().getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('un toque crítico anuncia el crítico y paga el multiplicador', () => {
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0.01); // < CRIT_CHANCE
+    try {
+      seedSave({ cash: 1_000, totalEarned: 1_000, lifetimeEarned: 1_000, businesses: { lemonade: 50 } });
+      render(<App />);
+      advance(800);
+      click(screen.getByLabelText('Toca para trabajar'));
+      advance(200);
+      expect(screen.queryByText(/¡CRÍTICO!/)).not.toBeNull();
+    } finally {
+      rnd.mockRestore();
+    }
+  });
+
+  it('el maletín de suerte aparece, se puede pillar y da una recompensa', () => {
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0); // aparece cuanto antes
+    try {
+      seedSave({ cash: 10_000, totalEarned: 10_000, lifetimeEarned: 10_000, businesses: { lemonade: 50 } });
+      render(<App />);
+      advance(800);
+      expect(screen.queryByLabelText(/maletín de suerte/i)).toBeNull();
+
+      advance(80_000, 2_000); // LUCK_MIN_MS = 70 s
+      const briefcase = screen.getByLabelText(/maletín de suerte/i);
+
+      click(briefcase);
+      advance(300);
+      // Una de las tres recompensas tiene que aparecer.
+      expect(screen.queryByText(/Fiebre del oro|Toque de Midas|Golpe de suerte/)).not.toBeNull();
+      // Y ya no está el maletín.
+      expect(screen.queryByLabelText(/maletín de suerte/i)).toBeNull();
+    } finally {
+      rnd.mockRestore();
+    }
+  });
+
+  it('el maletín se escapa si no lo pillas a tiempo', () => {
+    const rnd = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      seedSave({ cash: 10_000, totalEarned: 10_000, lifetimeEarned: 10_000, businesses: { lemonade: 50 } });
+      render(<App />);
+      advance(80_000, 2_000);
+      expect(screen.queryByLabelText(/maletín de suerte/i)).not.toBeNull();
+      advance(20_000, 2_000); // LUCK_LIFE_MS = 13 s
+      expect(screen.queryByLabelText(/maletín de suerte/i)).toBeNull();
+    } finally {
+      rnd.mockRestore();
+    }
   });
 
   it('REGRESIÓN: los tours arrancan aunque haya ingreso pasivo', () => {
@@ -409,11 +495,11 @@ describe('playtest', () => {
     const panel = screen.getByText('🐛 Modo Debug').closest('div[class*="fixed"]')!;
     const incomeOf = () =>
       within(panel as HTMLElement).getByText('Ingreso/s').parentElement?.textContent ?? '';
-    expect(incomeOf()).toMatch(/\$10\.0K|\$9\.\d+K/);
+    expect(parseMoney(incomeOf())).toBeCloseTo(10_000, -2); // ±50 $
 
     // Y tras jugar un poco sólo puede subir: los logros son monótonos.
     advance(1_500);
-    expect(incomeOf()).toMatch(/\$1[0-9]\.\dK/);
+    expect(parseMoney(incomeOf())).toBeGreaterThanOrEqual(10_000);
   });
 
   it('sobrevive a una partida corrupta y a un reloj atrasado', () => {

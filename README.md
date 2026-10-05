@@ -79,6 +79,33 @@ enormes — de las ausencias largas se ocupa el cálculo offline.
   25/75 hasta que caes 3 veces al Infierno, momento en el que **eliges tú** tu destino.
 - **Tiendas de prestigio y diabólica**: cada compra desbloquea una *función* permanente, no un
   bonus numérico.
+- **Logros con recompensa**: cada uno de los 35 suma **+2 % de ingreso permanente**. Sobreviven al
+  renacimiento y están acotados (+70 % máx.).
+- **Hitos de negocio**: cada 25 unidades de un negocio, ese negocio rinde +10 % (tope 20 hitos).
+  Da una razón para seguir invirtiendo en lo que ya tienes, no sólo en desbloquear el siguiente.
+- **Toque siempre relevante**: cada toque suma una fracción del ingreso por segundo
+  (`TAP_INCOME_FRACTION`), así que jugar con la mano sigue pagando en el endgame en vez de morir
+  en el primer minuto.
+- **Combo y críticos**: encadenar toques dentro de 1,6 s sube un combo hasta +80 %, y el 6 % de
+  los toques son críticos (×12).
+- **Maletín de suerte 💼**: aparece solo cada 70–150 s y dura 13 s. Da *Fiebre* (×7 ingreso, 30 s),
+  *Toque de Midas* (×20 al toque, 20 s) o un *Golpe de suerte* (15 min de producción al instante).
+
+### El bucle de juego
+
+```
+tocar (combo/críticos) ─┐
+                        ├─► efectivo ─► comprar negocios ─► hitos (+10 % c/25 uds)
+maletín de suerte ──────┘                      │
+                                               ├─► mejoras (×2) ─► más ingreso/s
+       ingreso/s ─► logros (+2 % c/u) ─────────┘        │
+                                                        └─► 18M ─► RENACER ─► multiplicador
+                                                                     permanente ─► otra vez,
+                                                                     pero más rápido
+```
+
+Tres escalas de recompensa a la vez: segundos (toques, críticos, combo), minutos (compras, hitos,
+logros, maletín) y horas (renacimiento, offline). Siempre hay algo a punto de desbloquearse.
 
 ## Tests
 
@@ -86,13 +113,23 @@ enormes — de las ausencias largas se ocupa el cálculo offline.
 npm test
 ```
 
-73 pruebas sobre la lógica real (`src/game/logic.ts`, `format.ts`) más un test de humo que
-renderiza la aplicación entera con `react-dom/server`, con partida vacía, con partida avanzada y
-con una partida corrupta en `localStorage`.
+**118 pruebas** en cinco ficheros:
+
+| Fichero | Qué cubre |
+| --- | --- |
+| `src/game/logic.test.ts` | lógica pura: costes, ingresos, renacimiento, hitos, buffs, logros |
+| `src/game/format.test.ts` | formato de números, dinero y tiempos |
+| `src/App.test.tsx` | humo: render completo con `react-dom/server` |
+| `src/playtest.test.tsx` | **juego real en jsdom**: se monta, se hace clic y se avanza el reloj |
+| `src/playtest.endgame.test.tsx` | tienda, parcelas, mánagers, renacimiento, tienda diabólica |
+
+Los *playtests* no leen el código: montan la aplicación, hacen clic en los botones, cambian de
+pestaña y avanzan los temporizadores falsos. Así se encontraron bugs que ningún test de lógica
+podía ver — botones anidados, tutoriales que nunca arrancaban, avisos que no se iban nunca.
 
 Incluyen regresiones de bugs reales que tuvo el proyecto: la explotación de inversores, el
-`formatNumber` que mostraba `1000K`, el precio mal sumado de las mejoras en lote y el primer
-ascenso que podía caer en el Infierno.
+`formatNumber` que mostraba `1000K`, el precio mal sumado de las mejoras en lote, el primer
+ascenso que podía caer en el Infierno y el aviso de logro que no desaparecía.
 
 ## Accesibilidad
 
@@ -106,3 +143,30 @@ ascenso que podía caer en el Infierno.
 
 `Ctrl+Shift+D` abre el panel de desarrollo: efectivo, monedas de prestigio, fijar un ingreso
 objetivo para probar balance, y reset de partida con confirmación.
+
+## Publicar en GitHub Pages
+
+Ya está preparado; sólo falta activarlo una vez en GitHub.
+
+1. **Settings → Pages → Build and deployment → Source**: elige **GitHub Actions**.
+2. Fusiona la rama en `main`. El workflow `.github/workflows/deploy.yml` se dispara solo.
+3. El juego queda en `https://<usuario>.github.io/tycoon-idle/`.
+
+Qué hace el workflow: `npm ci` → `npm run check` (tipos + tests + build) → sube `dist/` con
+`actions/upload-pages-artifact` → publica con `actions/deploy-pages`. **No se publica nada que no
+pasen los tests.** También se puede lanzar a mano desde la pestaña *Actions*.
+
+Por qué funciona sin más configuración:
+
+- `viteSingleFile` deja todo (JS y CSS) **inline en un único `dist/index.html`**, así que no hay
+  rutas de assets que se rompan al servir desde un subdirectorio.
+- Aun así `vite.config.ts` lleva `base: "./"` por si algún día se quita el plugin.
+- No hay router ni rutas internas, así que no hace falta `404.html`.
+- `npm ci` funciona porque `package-lock.json` está versionado y sincronizado.
+
+Para probar localmente el bundle de producción tal cual se publicará:
+
+```bash
+npm run build
+npm run preview     # sirve dist/ en http://localhost:4173
+```

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import type { BusinessDef } from '../game/data';
 import { formatMoney, formatNumber } from '../game/format';
+import { MILESTONE_BONUS, MILESTONE_EVERY, MILESTONE_MAX } from '../game/balance';
 import {
   automationUnlocked,
   businessCount,
@@ -12,6 +13,7 @@ import {
   isAutomated,
   managerCost,
   maxAffordable,
+  milestonesReached,
   type GameState,
   upgradeCostOf,
 } from '../game/logic';
@@ -64,6 +66,7 @@ function OwnedBusinessCard({
   const count = businessCount(state, id);
   const level = businessUpgrade(state, id);
   const myIncome = count > 0 ? businessIncome(def, state) : 0;
+  const milestones = milestonesReached(count);
   const autoUnlocked = automationUnlocked(state);
   const automated = isAutomated(state, id);
   const canAffordManager = state.cash >= managerCost();
@@ -131,10 +134,24 @@ function OwnedBusinessCard({
             {automated && <Badge tone="emerald">AUTO</Badge>}
             {level > 0 && <Badge tone="amber">x{Math.pow(2, level)}</Badge>}
             {employees > 0 && <Badge tone="sky">🏞️×{employees}</Badge>}
+            {milestones > 0 && <Badge tone="amber">🏆+{milestones * MILESTONE_BONUS * 100}%</Badge>}
           </div>
           <div className="text-xs tabular-nums text-slate-400">
             {formatNumber(count)} uds · {formatMoney(myIncome)}/s
           </div>
+          {/* Hito siguiente: siempre hay una razón para seguir comprando. */}
+          {count > 0 && milestones < MILESTONE_MAX && (
+            <div className="mt-1 flex items-center gap-1.5">
+              <ProgressBar
+                value={((count % MILESTONE_EVERY) / MILESTONE_EVERY)}
+                height="h-1"
+                className="flex-1"
+              />
+              <span className="shrink-0 text-[10px] tabular-nums text-slate-500">
+                {MILESTONE_EVERY - (count % MILESTONE_EVERY)} p/ hito
+              </span>
+            </div>
+          )}
         </div>
         <span className="shrink-0 text-slate-500 transition group-hover:text-slate-300" aria-hidden>
           ›

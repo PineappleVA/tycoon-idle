@@ -1,7 +1,8 @@
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { formatMoney } from '../game/format';
-import { TAP_VALUE_PER_LEVEL } from '../game/balance';
+import { COMBO_MAX, TAP_VALUE_PER_LEVEL } from '../game/balance';
+import type { Buff, TapFx } from '../game/useGame';
 
 interface FloatText {
   id: number;
@@ -11,6 +12,7 @@ interface FloatText {
   drift: number;
   passive?: boolean;
   scale?: number;
+  crit?: boolean;
 }
 
 interface Ripple {
@@ -28,12 +30,14 @@ const PASSIVE_LIFE_MS = 1_500;
 export const TapPanel = forwardRef<
   HTMLButtonElement,
   {
-    onTap: () => void;
+    onTap: () => TapFx;
     tapWorth: number;
     income: number;
     tapLevel: number;
+    combo: number;
+    buffs: Buff[];
   }
->(function TapPanel({ onTap, tapWorth, income, tapLevel }, ref) {
+>(function TapPanel({ onTap, tapWorth, income, tapLevel, combo, buffs }, ref) {
   const [floats, setFloats] = useState<FloatText[]>([]);
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const [pressed, setPressed] = useState(false);
@@ -46,16 +50,17 @@ export const TapPanel = forwardRef<
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
-      onTap();
+      const fx = onTap();
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       spawn({
         x,
         y,
-        text: '+' + formatMoney(tapWorth),
+        text: (fx.crit ? '¡CRÍTICO! +' : '+') + formatMoney(tapWorth * fx.mult),
         drift: (Math.random() - 0.5) * 46,
-        scale: 1 + Math.min(0.5, tapLevel * 0.02),
+        scale: (1 + Math.min(0.5, tapLevel * 0.02)) * (fx.crit ? 1.55 : 1 + Math.min(0.35, fx.combo * 0.008)),
+        crit: fx.crit,
       });
       const rid = ++floatId;
       setRipples((prev) => [...prev.slice(-3), { id: rid, x, y }]);
@@ -89,7 +94,27 @@ export const TapPanel = forwardRef<
     return () => window.clearInterval(iv);
   }, [ref, spawn]);
 
+  const comboMult = 1 + combo * 0.02;
+
   return (
+    <div className="relative">
+      {/* Buffs activos: se ven y se cuenta cuánto les queda. */}
+      {buffs.length > 0 && (
+        <div className="absolute -top-3 left-1/2 z-20 flex -translate-x-1/2 gap-1.5">
+          {buffs.map((b) => (
+            <span
+              key={b.kind + b.until}
+              className={cn(
+                'animate-pop rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider shadow-lg backdrop-blur',
+                b.kind === 'fever' ? 'bg-rose-500 text-white' : 'bg-yellow-300 text-yellow-950',
+              )}
+            >
+              {b.kind === 'fever' ? `🔥 Fiebre x${b.mult}` : `✨ Midas x${b.mult}`}
+            </span>
+          ))}
+        </div>
+      )}
+
     <button
       ref={ref}
       onClick={handleClick}
@@ -134,6 +159,25 @@ export const TapPanel = forwardRef<
       <div className="text-2xl font-extrabold tabular-nums text-white drop-shadow">
         +{formatMoney(tapWorth)}
       </div>
+      {/* Medidor de combo: sube si encadenas toques y se vacía si paras. */}
+      <div
+        className={cn(
+          'mt-3 flex items-center gap-2 transition-opacity duration-200',
+          combo > 1 ? 'opacity-100' : 'opacity-0',
+        )}
+        aria-hidden={combo <= 1}
+      >
+        <span className="text-[10px] font-black uppercase tracking-widest text-white/90">
+          Combo x{comboMult.toFixed(2)}
+        </span>
+        <span className="h-1.5 w-28 overflow-hidden rounded-full bg-black/30">
+          <span
+            className="block h-full rounded-full bg-gradient-to-r from-yellow-200 to-white transition-[width] duration-100"
+            style={{ width: `${Math.min(100, (combo / COMBO_MAX) * 100)}%` }}
+          />
+        </span>
+      </div>
+
       <div className="mt-4 flex items-center gap-2 rounded-full bg-black/25 px-4 py-1 text-xs font-medium text-white/90 backdrop-blur">
         <span>Pasivo: +{formatMoney(income)}/s</span>
         {tapLevel > 0 && (
@@ -148,7 +192,11 @@ export const TapPanel = forwardRef<
           key={f.id}
           className={cn(
             'pointer-events-none absolute font-extrabold drop-shadow-lg',
-            f.passive ? 'text-sm text-emerald-100/90' : 'text-lg text-white',
+            f.passive
+              ? 'text-sm text-emerald-100/90'
+              : f.crit
+                ? 'text-2xl text-yellow-200 [text-shadow:0_0_14px_rgba(253,224,71,0.95)]'
+                : 'text-lg text-white',
           )}
           style={
             {
@@ -164,5 +212,6 @@ export const TapPanel = forwardRef<
         </span>
       ))}
     </button>
+    </div>
   );
 });

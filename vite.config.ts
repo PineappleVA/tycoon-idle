@@ -10,6 +10,11 @@ const __dirname = path.dirname(__filename);
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Ruta relativa: el bundle se publica en GitHub Pages bajo
+  // https://<usuario>.github.io/tycoon-idle/, no en la raíz del dominio.
+  // Con viteSingleFile todo va inline en index.html, así que no hay assets
+  // externos, pero así tampoco se rompe si algún día se quita el plugin.
+  base: "./",
   plugins: [react(), tailwindcss(), viteSingleFile()],
   resolve: {
     alias: {

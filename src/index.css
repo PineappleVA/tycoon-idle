@@ -422,6 +422,35 @@ body {
   animation: toastLife var(--toast-ms, 4500ms) cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
 }
 
+/* Maletín de suerte: flota y se menea para que llame la vista. */
+@keyframes luckBob {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4) rotate(-12deg);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.15) rotate(6deg);
+  }
+  20% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translate(-50%, calc(-50% - 14px)) scale(1.04) rotate(4deg);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) rotate(-3deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(0.7) rotate(10deg);
+  }
+}
+.animate-luckBob {
+  animation: luckBob var(--luck-ms, 13000ms) ease-in-out both;
+}
+
 /* Confeti de celebración al desbloquear un logro. */
 @keyframes confettiBurst {
   0% {
@@ -670,5 +699,11 @@ button {
   .animate-confetti,
   .animate-celebrate-flash {
     display: none !important;
+  }
+
+  /* El maletín sí debe verse: se queda fijo y visible todo su tiempo. */
+  .animate-luckBob {
+    opacity: 1 !important;
+    transform: translate(-50%, -50%) !important;
   }
 }
