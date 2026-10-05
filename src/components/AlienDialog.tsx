@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SOULS_DROP_LABEL } from '../game/data';
 import { formatMoney } from '../game/format';
 import { AlienSVG, GodSVG, DemonSVG } from './NpcAvatars';
 
@@ -572,12 +573,23 @@ const DEVIL_SETS = [
   ],
 ];
 
-export function HellDialog({ fallCount = 1, onDismiss }: { fallCount?: number; onDismiss: () => void }) {
+export function HellDialog({
+  fallCount = 1,
+  soulsGained = 0,
+  onDismiss,
+}: {
+  fallCount?: number;
+  /** Almas obtenidas en ESTA caída; si es 0 se muestra el rango posible. */
+  soulsGained?: number;
+  onDismiss: () => void;
+}) {
   const lines = [...DEVIL_SETS[(Math.max(1, fallCount) - 1) % DEVIL_SETS.length]];
+  // Se muestra el botín REAL de esta caída (soulsGained), no un número fijo.
+  const drop = soulsGained > 0 ? `+${soulsGained} Almas 🔥` : SOULS_DROP_LABEL;
   // Al primer descenso, anuncia la Tienda Diabólica; en los siguientes la recuerda.
   const shopNote = fallCount === 1
-    ? 'Pero te dejo un regalo envenenado: 3 Almas 🔥 y acceso a mi Tienda Diabólica. Gástalas en poder. Te hará volver antes.'
-    : `Toma tus 3 Almas 🔥. Ya sabes: mi Tienda Diabólica te espera. Nadie se resiste a un buen pacto.`;
+    ? `Pero te dejo un regalo envenenado: ${drop} y acceso a mi Tienda Diabólica. Gástalas en poder. Te hará volver antes.`
+    : `Toma tus ${drop}. Ya sabes: mi Tienda Diabólica te espera. Nadie se resiste a un buen pacto.`;
   // Insertamos la nota justo antes de la firma final ("— El Diablo").
   lines.splice(lines.length - 1, 0, shopNote);
   return (

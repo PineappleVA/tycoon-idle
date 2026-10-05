@@ -1,15 +1,30 @@
+import {
+  BALANZA_THRESHOLD,
+  BUSINESS_COST_MULTIPLIER,
+  PLOTS_PER_UNLOCK,
+  SOULS_MAX_PER_FALL,
+  SOULS_MIN_PER_FALL,
+} from './balance';
+
+/**
+ * data.ts — CATÁLOGO de contenido: negocios y artículos de tienda.
+ * Los números de balance viven en balance.ts; aquí sólo se describen cosas.
+ */
+
 export interface BusinessDef {
   id: string;
   name: string;
   icon: string;
-  /** tailwind gradient classes for the card accent */
+  /** clases de gradiente de tailwind para el acento de la tarjeta */
   gradient: string;
   textColor: string;
   baseCost: number;
   costMultiplier: number;
   baseIncome: number;
-  /** totalEarned required before this business is unlocked */
+  /** totalEarned necesario para desbloquear el negocio */
   unlockAt: number;
+  /** frase de ambiente mostrada en el detalle */
+  flavor: string[];
 }
 
 export const BUSINESSES: BusinessDef[] = [
@@ -20,9 +35,10 @@ export const BUSINESSES: BusinessDef[] = [
     gradient: 'from-amber-400 to-yellow-500',
     textColor: 'text-amber-700',
     baseCost: 35,
-    costMultiplier: 1.24,
+    costMultiplier: BUSINESS_COST_MULTIPLIER,
     baseIncome: 0.8,
     unlockAt: 0,
+    flavor: ['Frescura artesanal.', 'Cada vaso es una obra maestra.', 'El sol es nuestro aliado.'],
   },
   {
     id: 'newspaper',
@@ -31,9 +47,10 @@ export const BUSINESSES: BusinessDef[] = [
     gradient: 'from-sky-400 to-blue-500',
     textColor: 'text-sky-700',
     baseCost: 650,
-    costMultiplier: 1.24,
+    costMultiplier: BUSINESS_COST_MULTIPLIER,
     baseIncome: 5,
     unlockAt: 300,
+    flavor: ['Noticias frescas cada mañana.', 'La verdad, impresa.', 'El poder de la información.'],
   },
   {
     id: 'donut',
@@ -42,9 +59,10 @@ export const BUSINESSES: BusinessDef[] = [
     gradient: 'from-pink-400 to-rose-500',
     textColor: 'text-pink-700',
     baseCost: 15_000,
-    costMultiplier: 1.24,
+    costMultiplier: BUSINESS_COST_MULTIPLIER,
     baseIncome: 28,
     unlockAt: 4_500,
+    flavor: ['Azúcar + felicidad = $$$', 'El desayuno de los campeones.', 'Adictivos, dicen.'],
   },
   {
     id: 'pizza',
@@ -53,9 +71,10 @@ export const BUSINESSES: BusinessDef[] = [
     gradient: 'from-orange-400 to-red-500',
     textColor: 'text-orange-700',
     baseCost: 250_000,
-    costMultiplier: 1.24,
+    costMultiplier: BUSINESS_COST_MULTIPLIER,
     baseIncome: 160,
     unlockAt: 35_000,
+    flavor: ['Masa madre, pasión eterna.', 'Napolitana auténtica.', 'La pizza une familias.'],
   },
   {
     id: 'taxi',
@@ -64,9 +83,10 @@ export const BUSINESSES: BusinessDef[] = [
     gradient: 'from-emerald-400 to-green-600',
     textColor: 'text-emerald-700',
     baseCost: 3_500_000,
-    costMultiplier: 1.24,
+    costMultiplier: BUSINESS_COST_MULTIPLIER,
     baseIncome: 950,
     unlockAt: 260_000,
+    flavor: ['Movilidad urbana premium.', 'Siempre llegamos.', 'La ciudad es nuestra.'],
   },
   {
     id: 'factory',
@@ -75,9 +95,10 @@ export const BUSINESSES: BusinessDef[] = [
     gradient: 'from-zinc-400 to-slate-600',
     textColor: 'text-slate-700',
     baseCost: 55_000_000,
-    costMultiplier: 1.24,
+    costMultiplier: BUSINESS_COST_MULTIPLIER,
     baseIncome: 4_800,
     unlockAt: 2_400_000,
+    flavor: ['Producción en serie.', 'Eficiencia industrial.', 'Hierro, vapor, progreso.'],
   },
   {
     id: 'tower',
@@ -86,9 +107,10 @@ export const BUSINESSES: BusinessDef[] = [
     gradient: 'from-indigo-400 to-violet-600',
     textColor: 'text-indigo-700',
     baseCost: 850_000_000,
-    costMultiplier: 1.24,
+    costMultiplier: BUSINESS_COST_MULTIPLIER,
     baseIncome: 32_000,
     unlockAt: 19_000_000,
+    flavor: ['Oficinas con vistas.', 'El símbolo del poder.', 'Vive en las nubes.'],
   },
   {
     id: 'rocket',
@@ -97,20 +119,15 @@ export const BUSINESSES: BusinessDef[] = [
     gradient: 'from-fuchsia-400 to-purple-600',
     textColor: 'text-fuchsia-700',
     baseCost: 16_000_000_000,
-    costMultiplier: 1.24,
+    costMultiplier: BUSINESS_COST_MULTIPLIER,
     baseIncome: 260_000,
     unlockAt: 190_000_000,
+    flavor: ['Al infinito y más allá.', 'El cielo no es el límite.', 'Destino: Marte.'],
   },
 ];
 
-export const TAP_BASE_COST = 50;
-export const OFFLINE_RATE = 0.25;
-export const OFFLINE_REDUCED_RATE = 0.03;
-export const OFFLINE_CAP_MS = 24 * 60 * 60 * 1000; // 24 horas al 25%
-export const OFFLINE_MIN_MS = 5_000; // ignore very short gaps
-
-/** Manager para automatizar la compra de un negocio. Desbloqueado al tener pizzería. */
-export const MANAGER_COST = 150_000;
+/** Índice del negocio que desbloquea la automatización (mánagers). */
+export const AUTOMATION_BUSINESS_INDEX = 3; // Pizzería
 
 /** Identificadores de las funciones que se pueden desbloquear en las tiendas. */
 export type FunctionId =
@@ -123,17 +140,17 @@ export type FunctionId =
   | 'foreman_upgrade'
   | 'permanent_managers';
 
+export type ShopCurrency = 'investors' | 'crystals' | 'stars' | 'souls';
+
 export interface ShopItem {
-  id: string;
+  id: FunctionId;
   name: string;
   desc: string;
   icon: string;
   cost: number;
-  currency: 'investors' | 'crystals' | 'stars' | 'souls';
+  currency: ShopCurrency;
   currencyIcon: string;
-  /** función que desbloquea esta compra (compra única, no da bonus numérico) */
-  unlocks: FunctionId;
-  /** solo visible/comprable si es tienda diabólica */
+  /** sólo visible/comprable si es tienda diabólica */
   diabolic?: boolean;
 }
 
@@ -142,12 +159,11 @@ export const SHOP_ITEMS: ShopItem[] = [
   {
     id: 'unlock_plots',
     name: 'Registro de Parcelas',
-    desc: 'Desbloquea las Parcelas: 3 terrenos donde asignar Empleados a tus negocios.',
+    desc: `Desbloquea las Parcelas: ${PLOTS_PER_UNLOCK} terrenos donde asignar Empleados a tus negocios.`,
     icon: '🏞️',
     cost: 60,
     currency: 'investors',
     currencyIcon: '👽',
-    unlocks: 'unlock_plots',
   },
   {
     id: 'autotap',
@@ -157,17 +173,15 @@ export const SHOP_ITEMS: ShopItem[] = [
     cost: 180,
     currency: 'investors',
     currencyIcon: '👽',
-    unlocks: 'autotap',
   },
   {
     id: 'bulkupgrade',
     name: 'Mejora en Cadena',
-    desc: 'Desbloquea los botones de mejora múltiple (+10 / +25) en cada negocio.',
+    desc: 'Desbloquea los botones de mejora múltiple (+5 / +10) en cada negocio.',
     icon: '⛓️',
     cost: 25,
     currency: 'crystals',
     currencyIcon: '💠',
-    unlocks: 'bulkupgrade',
   },
   {
     id: 'offline48',
@@ -177,7 +191,6 @@ export const SHOP_ITEMS: ShopItem[] = [
     cost: 60,
     currency: 'crystals',
     currencyIcon: '💠',
-    unlocks: 'offline48',
   },
   {
     id: 'buyx1000',
@@ -187,7 +200,6 @@ export const SHOP_ITEMS: ShopItem[] = [
     cost: 10,
     currency: 'stars',
     currencyIcon: '⭐',
-    unlocks: 'buyx1000',
   },
 ];
 
@@ -196,12 +208,11 @@ export const DIABOLIC_ITEMS: ShopItem[] = [
   {
     id: 'blood_pact',
     name: 'Pacto de Sangre',
-    desc: 'El Diablo te concede 3 Parcelas extra (desbloquea el sistema si no lo tenías).',
+    desc: `El Diablo te concede ${PLOTS_PER_UNLOCK} Parcelas extra (desbloquea el sistema si no lo tenías).`,
     icon: '📜',
     cost: 4,
     currency: 'souls',
     currencyIcon: '🔥',
-    unlocks: 'blood_pact',
     diabolic: true,
   },
   {
@@ -212,7 +223,6 @@ export const DIABOLIC_ITEMS: ShopItem[] = [
     cost: 8,
     currency: 'souls',
     currencyIcon: '🔥',
-    unlocks: 'foreman_upgrade',
     diabolic: true,
   },
   {
@@ -223,17 +233,15 @@ export const DIABOLIC_ITEMS: ShopItem[] = [
     cost: 14,
     currency: 'souls',
     currencyIcon: '🔥',
-    unlocks: 'permanent_managers',
     diabolic: true,
   },
 ];
 
-/** Rango de Almas ganadas por cada caída al Infierno (aleatorio). */
-export const SOULS_MIN_PER_FALL = 1;
-export const SOULS_MAX_PER_FALL = 4;
+export const ALL_SHOP_ITEMS: ShopItem[] = [...SHOP_ITEMS, ...DIABOLIC_ITEMS];
 
-/** Nº de parcelas que otorga cada función que las concede. */
-export const PLOTS_PER_UNLOCK = 3;
-
-/** Caídas al Infierno necesarias para que "El Cielo" se transforme en "La Balanza". */
-export const BALANZA_THRESHOLD = 3;
+/**
+ * Textos de ayuda que la UI debe derivar del balance en vez de hardcodear.
+ * Se construyen aquí para que cambien solos si se toca balance.ts.
+ */
+export const SOULS_DROP_LABEL = `+${SOULS_MIN_PER_FALL}–${SOULS_MAX_PER_FALL} Almas 🔥`;
+export const BALANZA_LABEL = `Tras ${BALANZA_THRESHOLD} caídas al Infierno, El Cielo se transforma en La Balanza y eliges tú tu destino.`;
