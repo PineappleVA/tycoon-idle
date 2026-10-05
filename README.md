@@ -146,10 +146,13 @@ objetivo para probar balance, y reset de partida con confirmación.
 
 ## Publicar en GitHub Pages
 
-Ya está preparado; sólo falta activarlo una vez en GitHub.
+No hay ningún paso manual: el workflow activa Pages por su cuenta.
 
-1. **Settings → Pages → Build and deployment → Source**: elige **GitHub Actions**.
-2. Fusiona la rama en `main`. El workflow `.github/workflows/deploy.yml` se dispara solo.
+1. Fusiona en `main`. El workflow `.github/workflows/deploy.yml` se dispara solo.
+2. `actions/configure-pages` va con `enablement: true`, así que **activa Pages la
+   primera vez** sin tener que entrar en Settings. (Sin ese parámetro la acción
+   falla con `Get Pages site failed` hasta que alguien elige *GitHub Actions* a
+   mano en Settings → Pages; fue exactamente lo que pasó en el primer intento.)
 3. El juego queda en `https://<usuario>.github.io/tycoon-idle/`.
 
 Qué hace el workflow: `npm ci` → `npm run check` (tipos + tests + build) → sube `dist/` con
