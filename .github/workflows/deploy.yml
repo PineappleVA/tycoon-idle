@@ -37,8 +37,13 @@ jobs:
       - name: Construir
         run: npm run build
 
+      # enablement: true activa Pages por nosotros la primera vez (build type
+      # "workflow"). Sin esto la acción falla con "Get Pages site failed" hasta
+      # que alguien entra en Settings -> Pages a elegir GitHub Actions a mano.
       - name: Configurar Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Subir artefacto
         uses: actions/upload-pages-artifact@v3
