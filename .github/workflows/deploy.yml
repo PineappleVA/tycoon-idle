@@ -10,6 +10,10 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  # Crear el sitio Pages (POST /repos/{owner}/{repo}/pages) necesita
+  # "administration", no basta con "pages". Sin esto, enablement: true falla con
+  # "Resource not accessible by integration".
+  administration: write
 
 # Un solo despliegue a la vez; si llega otro, se cancela el anterior.
 concurrency:
