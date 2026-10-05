@@ -118,6 +118,12 @@ export function plotBonusForBusiness(state: GameState, businessId: string): numb
 /** Cada 750K de lifetimeEarned = 1 inversor potencial (nerfeado BASTANTE) */
 const INVESTOR_PER = 750_000;
 
+/**
+ * Bonus de velocidad que aporta CADA inversor.
+ * Única fuente de verdad: la UI debe leerla de aquí en vez de hardcodear el %.
+ */
+export const INVESTOR_BONUS_PER = 0.01;
+
 /** Cuántos inversores tiene disponible (sin gastar) */
 export function availableInvestors(s: GameState): number {
   return s.investors - s.investorsSpent;
@@ -128,9 +134,9 @@ export function totalInvestorsEarned(lifetime: number): number {
   return Math.floor(lifetime / INVESTOR_PER);
 }
 
-/** Bonus multiplicativo de los inversores: +1% por cada inversor que posees */
+/** Bonus multiplicativo de los inversores: +INVESTOR_BONUS_PER por cada inversor que posees */
 export function investorBonus(s: GameState): number {
-  return 1 + availableInvestors(s) * 0.01;
+  return 1 + availableInvestors(s) * INVESTOR_BONUS_PER;
 }
 
 /** Se ha desbloqueado el sistema de inversores (primer renacimiento) */
@@ -175,10 +181,10 @@ export const REBIRTH_TIERS: RebirthTierDef[] = [
     currency: 'Inversores',
     currencyIcon: '👽',
     gradient: 'from-emerald-500 to-teal-600',
-    bonusPer: 0.007, // cada inversor da +0.7% velocidad (nerfeado)
+    bonusPer: INVESTOR_BONUS_PER, // cada inversor da +1% velocidad (única fuente de verdad)
     requirement: 18_000_000, // $18M para renacer (nerfeado BASTANTE, antes 6M)
     unlockNeeds: 0,
-    desc: 'Los alienígenas invierten en tu imperio. Alcanza $18M en esta vida para renacer y ganar Inversores (+0.7% velocidad c/u). Cada 750K$ acumulados en total te regalan un Inversor extra.',
+    desc: 'Los alienígenas invierten en tu imperio. Alcanza $18M en esta vida para renacer y ganar Inversores (+1% velocidad c/u). Cada 750K$ acumulados en total te regalan un Inversor extra.',
   },
   {
     level: 2,
@@ -285,6 +291,31 @@ export function upgradeCostOf(def: BusinessDef, level: number): number {
   return Math.ceil(def.baseCost * 25 * Math.pow(7.5, level));
 }
 
+/**
+ * Coste TOTAL de comprar `amount` mejoras seguidas partiendo de `level`.
+ * No es lo mismo que upgradeCostOf(def, level + amount - 1): eso daría sólo
+ * el precio de la última, no la suma de todas.
+ */
+export function bulkUpgradeCost(def: BusinessDef, level: number, amount: number): number {
+  let total = 0;
+  for (let i = 0; i < amount; i++) total += upgradeCostOf(def, level + i);
+  return total;
+}
+
+/** Cuántas mejoras se pueden pagar con `cash` partiendo de `level`. */
+export function maxAffordableUpgrades(def: BusinessDef, level: number, cash: number): number {
+  let total = 0;
+  let n = 0;
+  // Las mejoras crecen x7.5: con unos pocos cientos ya se desborda cualquier cash realista.
+  while (n < 500) {
+    const next = upgradeCostOf(def, level + n);
+    if (total + next > cash) break;
+    total += next;
+    n += 1;
+  }
+  return n;
+}
+
 export function bulkCost(def: BusinessDef, count: number, amount: number): number {
   if (amount <= 0) return 0;
   const r = def.costMultiplier;
@@ -361,4 +392,147 @@ export function randomSouls(): number {
 /** Si tras muchas caídas, "El Cielo" se transforma en "La Balanza" (elección Cielo/Infierno). */
 export function balanzaUnlocked(state: GameState): boolean {
   return state.hellFalls >= BALANZA_THRESHOLD;
+}
+
+/* ------------------------------------------------------------------ */
+/* Transiciones de renacimiento (puras: sin setState ni persist)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Suelo seguro para `investorsClaimed`.
+ *
+ * `investorsClaimed` marca cuántos inversores ya se acreditaron desde
+ * `lifetimeEarned`. Como `lifetimeEarned` sobrevive a TODOS los renacimientos,
+ * ese contador nunca debe bajar: si se reseteara a 0, el siguiente tick volvería
+ * a regalar todos los inversores del lifetime de golpe (con $20B de lifetime
+ * serían ~26.600 inversores = ×267 de bonus gratis).
+ *
+ * Se usa `max` porque un renacimiento de nivel 1 puede haber acreditado
+ * inversores extra por encima del suelo del lifetime.
+ */
+export function investorClaimFloor(s: { lifetimeEarned: number; investorsClaimed: number }): number {
+  return Math.max(s.investorsClaimed, totalInvestorsEarned(s.lifetimeEarned));
+}
+
+/**
+ * Acredita los inversores que corresponden al crecimiento de `lifetimeEarned`.
+ * Es la única vía por la que el lifetime genera inversores, y por eso depende
+ * de que `investorsClaimed` sea monotónico (ver investorClaimFloor).
+ */
+export function accrueInvestors(s: GameState, newLifetime: number): Pick<GameState, 'investors' | 'investorsClaimed'> {
+  const newTotal = totalInvestorsEarned(newLifetime);
+  return {
+    investors: s.investors + Math.max(0, newTotal - s.investorsClaimed),
+    investorsClaimed: Math.max(s.investorsClaimed, newTotal),
+  };
+}
+
+/**
+ * INFIERNO: reset TOTAL excepto las "estadísticas de vida":
+ * lifetimeEarned, taps, historial de renacimientos, heavenReached,
+ * alienDialogSeen, compras de tienda, almas y nº de caídas.
+ *
+ * Se pierde TODO lo demás: efectivo, negocios, mejoras, mánagers (siempre,
+ * incluso con Contrato Eterno), tap level, Cristales, Estrellas, parcelas
+ * e Inversores.
+ */
+export function applyHellFall(s: GameState, soulsGained: number, now: number = Date.now()): GameState {
+  return {
+    ...DEFAULT_STATE,
+    rebirths: s.rebirths + 1,
+    taps: s.taps,
+    lifetimeEarned: s.lifetimeEarned,
+    tier1: s.tier1,
+    tier2: s.tier2,
+    tier3: s.tier3,
+    heavenReached: s.heavenReached,
+    alienDialogSeen: s.alienDialogSeen,
+    shopUpgrades: s.shopUpgrades,
+    crystals: 0,
+    stars: 0,
+    plots: 0,
+    plotAssignments: {},
+    // Te quita los Inversores, pero NO el contador de los ya acreditados.
+    investors: 0,
+    investorsSpent: 0,
+    investorsClaimed: investorClaimFloor(s),
+    hellFalls: s.hellFalls + 1,
+    souls: s.souls + soulsGained,
+    lastSave: now,
+  };
+}
+
+/** CIELO: ganas Estrellas y conservas Inversores y parcelas. */
+export function applyHeaven(s: GameState, gained: number, keepManagers: boolean, now: number = Date.now()): GameState {
+  return {
+    ...DEFAULT_STATE,
+    rebirths: s.rebirths + 1,
+    crystals: 0,
+    stars: s.stars + gained,
+    tier3: s.tier3 + 1,
+    heavenReached: true,
+    lifetimeEarned: s.lifetimeEarned,
+    alienDialogSeen: s.alienDialogSeen,
+    investors: s.investors,
+    investorsClaimed: s.investorsClaimed,
+    investorsSpent: s.investorsSpent,
+    shopUpgrades: s.shopUpgrades,
+    plotAssignments: s.plotAssignments,
+    automated: keepManagers ? s.automated : {},
+    hellFalls: s.hellFalls,
+    souls: s.souls,
+    lastSave: now,
+  };
+}
+
+/** NIVEL 1 — ALIENÍGENAS: ganas Inversores. */
+export function applyAlienRebirth(s: GameState, gained: number, keepManagers: boolean, now: number = Date.now()): GameState {
+  return {
+    ...DEFAULT_STATE,
+    rebirths: s.rebirths + 1,
+    crystals: s.crystals,
+    stars: s.stars,
+    tier1: s.tier1 + 1,
+    tier2: s.tier2,
+    tier3: s.tier3,
+    heavenReached: s.heavenReached,
+    lifetimeEarned: s.lifetimeEarned,
+    alienDialogSeen: false,
+    investors: s.investors + gained,
+    investorsClaimed: s.investorsClaimed + gained,
+    investorsSpent: s.investorsSpent,
+    shopUpgrades: s.shopUpgrades,
+    plotAssignments: s.plotAssignments,
+    automated: keepManagers ? s.automated : {},
+    hellFalls: s.hellFalls,
+    souls: s.souls,
+    lastSave: now,
+  };
+}
+
+/** NIVEL 2 — PORTAL: sacrificas TODOS tus Inversores a cambio de Cristales. */
+export function applyPortalRebirth(s: GameState, gained: number, keepManagers: boolean, now: number = Date.now()): GameState {
+  return {
+    ...DEFAULT_STATE,
+    rebirths: s.rebirths + 1,
+    crystals: s.crystals + gained,
+    stars: s.stars,
+    tier1: s.tier1,
+    tier2: s.tier2 + 1,
+    tier3: s.tier3,
+    heavenReached: s.heavenReached,
+    lifetimeEarned: s.lifetimeEarned,
+    alienDialogSeen: s.alienDialogSeen,
+    // El portal consume los inversores, pero el contador de acreditados se
+    // conserva: si no, el siguiente tick te los devolvería todos gratis.
+    investors: 0,
+    investorsClaimed: investorClaimFloor(s),
+    investorsSpent: 0,
+    shopUpgrades: s.shopUpgrades,
+    plotAssignments: s.plotAssignments,
+    automated: keepManagers ? s.automated : {},
+    hellFalls: s.hellFalls,
+    souls: s.souls,
+    lastSave: now,
+  };
 }

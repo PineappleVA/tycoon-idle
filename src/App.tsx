@@ -1,10 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BUSINESSES, DIABOLIC_ITEMS, SHOP_ITEMS } from './game/data';
+import {
+  BUSINESSES,
+  DIABOLIC_ITEMS,
+  OFFLINE_RATE,
+  OFFLINE_REDUCED_RATE,
+  SHOP_ITEMS,
+  SOULS_MAX_PER_FALL,
+  SOULS_MIN_PER_FALL,
+} from './game/data';
 import {
   allBusinessesOwned,
   automationUnlocked,
   availableInvestors,
-  balanzaUnlocked,
   bulkCost,
   businessCount,
   businessIncome,
@@ -14,12 +21,13 @@ import {
   GameState,
   hasFunction,
   HEAVEN_CHANCE,
-  investorBonus,
+  INVESTOR_BONUS_PER,
   investorsUnlocked,
   isAutomated,
   isFirstHeavenAttempt,
   managerCost,
   maxAffordable,
+  offlineCapMs,
   ownedBusinessCount,
   plotsUnlocked,
   REBIRTH_TIERS,
@@ -79,6 +87,11 @@ const TABS: TabDef[] = [
     unlocked: (s) => s.rebirths > 0 || s.lifetimeEarned >= REBIRTH_TIERS[0].requirement * 0.2,
   },
 ];
+
+/** % de velocidad que aportan los inversores activos. Derivado de INVESTOR_BONUS_PER. */
+function investorPct(state: GameState): number {
+  return availableInvestors(state) * INVESTOR_BONUS_PER * 100;
+}
 
 const TOURS_KEY = 'tycoon-tours-v1';
 
@@ -230,6 +243,7 @@ export default function App() {
   const [godDialog, setGodDialog] = useState(false);
   const [hellDialog, setHellDialog] = useState(false);
   const pendingSkyOutcome = useRef<'heaven' | 'hell' | null>(null);
+  const rebirthAnimRef = useRef<TierLevel | null>(null);
   const lastAlienGained = useRef(0);
   const [heavenVisitCount, setHeavenVisitCount] = useState(0);
   const [hellFallCount, setHellFallCount] = useState(0);
@@ -244,31 +258,38 @@ export default function App() {
       // La primera vez SIEMPRE es Cielo garantizado. A partir de la segunda: 25% Cielo / 75% Infierno.
       const heaven = isFirstHeavenAttempt(game.state) || Math.random() < HEAVEN_CHANCE;
       pendingSkyOutcome.current = heaven ? 'heaven' : 'hell';
+      rebirthAnimRef.current = 3;
       setRebirthAnim(3);
     } else {
+      rebirthAnimRef.current = level;
       setRebirthAnim(level);
     }
   }, [game.state]);
 
   const finishRebirthAnim = useCallback(() => {
-    setRebirthAnim((lvl) => {
-      if (lvl === 3) {
-        const heaven = pendingSkyOutcome.current === 'heaven';
-        game.rebirthTier(3, heaven);
-        // Transición inmediata: el diálogo hace su propio fade-in.
-        if (heaven) {
-          setHeavenVisitCount((v) => v + 1);
-          window.setTimeout(() => setGodDialog(true), 150);
-        } else {
-          setHellFallCount((v) => v + 1);
-          window.setTimeout(() => setHellDialog(true), 150);
-        }
-        pendingSkyOutcome.current = null;
-      } else if (lvl) {
-        game.rebirthTier(lvl);
+    // Los efectos van FUERA del updater de setState: en <StrictMode> React invoca
+    // los updaters dos veces en desarrollo, así que poner game.rebirthTier() dentro
+    // ejecutaba el renacimiento el doble (doble premio / doble caída al Infierno).
+    const lvl = rebirthAnimRef.current;
+    if (lvl === null) return;
+    rebirthAnimRef.current = null;
+    setRebirthAnim(null);
+
+    if (lvl === 3) {
+      const heaven = pendingSkyOutcome.current === 'heaven';
+      pendingSkyOutcome.current = null;
+      game.rebirthTier(3, heaven);
+      // Transición inmediata: el diálogo hace su propio fade-in.
+      if (heaven) {
+        setHeavenVisitCount((v) => v + 1);
+        window.setTimeout(() => setGodDialog(true), 150);
+      } else {
+        setHellFallCount((v) => v + 1);
+        window.setTimeout(() => setHellDialog(true), 150);
       }
-      return null;
-    });
+    } else {
+      game.rebirthTier(lvl);
+    }
   }, [game]);
 
   const income = useMemo(() => totalIncome(state), [state]);
@@ -368,6 +389,7 @@ export default function App() {
 
       <div className="relative mx-auto max-w-6xl px-4 py-6">
         <TopBar
+          state={state}
           cash={state.cash}
           income={income}
           ingots={state.ingots}
@@ -488,6 +510,7 @@ export default function App() {
 /* Top bar                                                             */
 /* ------------------------------------------------------------------ */
 function TopBar({
+  state,
   cash,
   income,
   ingots,
@@ -496,6 +519,7 @@ function TopBar({
   rebirths,
   investors,
 }: {
+  state: GameState;
   cash: number;
   income: number;
   ingots: number;
@@ -504,10 +528,8 @@ function TopBar({
   rebirths: number;
   investors: number;
 }) {
-  const mult = investorBonus({ investors, investorsSpent: 0 } as GameState) *
-    (1 + ingots * REBIRTH_TIERS[0].bonusPer) *
-    (1 + crystals * REBIRTH_TIERS[1].bonusPer) *
-    (1 + stars * REBIRTH_TIERS[2].bonusPer);
+  // Misma función que usa el motor: así el bonus mostrado nunca diverge del aplicado.
+  const mult = rebirthMultiplier(state);
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/[0.04] px-5 py-4 backdrop-blur-xl">
       <div className="flex items-center gap-3">
@@ -735,7 +757,7 @@ function BusinessTab({
           <div>
             <span className="text-sm font-semibold text-emerald-200">👽 Inversores</span>
             <span className="ml-2 text-xs text-emerald-300/80">
-              {availableInvestors(state)} activos · +{availableInvestors(state)}% velocidad
+              {availableInvestors(state)} activos · +{investorPct(state)}% velocidad
             </span>
           </div>
         </div>
@@ -1268,9 +1290,6 @@ function PrestigeShop({ game }: { game: GameApi }) {
 
 function DiabolicShop({ game }: { game: GameApi }) {
   const { state } = game;
-  const tier1Count = state.shopUpgrades['infernal_pact'] ?? 0;
-  const tier2Count = state.shopUpgrades['demonic_forge'] ?? 0;
-  const tier3Count = state.shopUpgrades['abyssal_throne'] ?? 0;
   return (
     <div className="space-y-3">
       <div className="rounded-2xl border border-red-500/30 bg-red-950/40 p-4 relative overflow-hidden">
@@ -1293,13 +1312,21 @@ function DiabolicShop({ game }: { game: GameApi }) {
           <span className="text-xs font-bold text-orange-300">{formatNumber(state.souls)} 🔥 Almas</span>
         </div>
         <p className="mt-1 text-[11px] leading-relaxed text-red-200/80">
-          Caída al Infierno = <span className="font-bold">+3 Almas 🔥</span>. Has caído {state.hellFalls} {state.hellFalls === 1 ? 'vez' : 'veces'}. Cada mejora es{' '}
+          Caída al Infierno ={' '}
+          <span className="font-bold">
+            +{SOULS_MIN_PER_FALL}–{SOULS_MAX_PER_FALL} Almas 🔥
+          </span>
+          . Has caído {state.hellFalls} {state.hellFalls === 1 ? 'vez' : 'veces'}. Cada mejora es{' '}
           <span className="font-bold">permanente</span> y se acumula con las demas.
         </p>
         <div className="mt-2 flex gap-2 text-[10px]">
-          <span className="rounded bg-red-900/40 px-2 py-0.5 text-red-200">📜 ×{tier1Count}</span>
-          <span className="rounded bg-red-900/40 px-2 py-0.5 text-red-200">⚒️ ×{tier2Count}</span>
-          <span className="rounded bg-red-900/40 px-2 py-0.5 text-red-200">🕯️ ×{tier3Count}</span>
+          {/* Se recorre la lista real: antes se leían ids inventados
+              ('infernal_pact'…) y los contadores marcaban siempre ×0. */}
+          {DIABOLIC_ITEMS.map((item) => (
+            <span key={item.id} className="rounded bg-red-900/40 px-2 py-0.5 text-red-200">
+              {item.icon} ×{state.shopUpgrades[item.id] ?? 0}
+            </span>
+          ))}
         </div>
       </div>
       <div className="space-y-2">
@@ -1534,6 +1561,9 @@ function RebirthTierCard({
 function StatsTab({ game, income }: { game: GameApi; income: number }) {
   const { state } = game;
   const owned = BUSINESSES.reduce((s, b) => s + businessCount(state, b.id), 0);
+  // El tope offline es 24h, o 48h con la función "Reloj Dimensional".
+  const capSeconds = offlineCapMs(state) / 1000;
+  const capHours = Math.round(capSeconds / 3600);
 
   const rows = [
     { label: 'Efectivo actual', value: formatMoney(state.cash), icon: '💵' },
@@ -1550,18 +1580,20 @@ function StatsTab({ game, income }: { game: GameApi; income: number }) {
         <div className="flex items-end justify-between">
           <div>
             <div className="text-[10px] uppercase tracking-widest text-slate-400">
-              Offline / día (25%)
+              Offline / {capHours}h ({Math.round(OFFLINE_RATE * 100)}%)
             </div>
             <div className="text-lg font-bold tabular-nums text-emerald-400">
-              {formatMoney(income * 86400 * 0.25)}
+              {formatMoney(income * capSeconds * OFFLINE_RATE)}
             </div>
           </div>
           <div className="text-right text-[10px] uppercase tracking-widest text-slate-400">
-            Máx. 24h al 25%
+            Máx. {capHours}h al {Math.round(OFFLINE_RATE * 100)}%
           </div>
         </div>
         <p className="mt-2 text-[11px] text-slate-400">
-          Tras las primeras 24h offline, el bonus baja al 3%. Siempre conservas lo generado en las primeras 24h.
+          Tras las primeras {capHours}h offline, el bonus baja al{' '}
+          {Math.round(OFFLINE_REDUCED_RATE * 100)}%. Siempre conservas lo generado en las primeras{' '}
+          {capHours}h.
         </p>
       </div>
 

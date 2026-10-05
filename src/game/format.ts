@@ -4,9 +4,19 @@ export function formatNumber(n: number): string {
   if (!isFinite(n)) return '∞';
   if (n < 0) return '-' + formatNumber(-n);
   if (n < 1000) return Math.floor(n).toString();
-  const tier = Math.min(UNITS.length - 1, Math.floor(Math.log10(n) / 3));
-  const scaled = n / Math.pow(10, tier * 3);
-  const decimals = scaled < 10 ? 2 : scaled < 100 ? 1 : 0;
+
+  let tier = Math.min(UNITS.length - 1, Math.floor(Math.log10(n) / 3));
+  let scaled = n / Math.pow(10, tier * 3);
+  let decimals = scaled < 10 ? 2 : scaled < 100 ? 1 : 0;
+
+  // Al redondear con menos decimales el valor puede llegar a 1000 (999.999 -> "1000K").
+  // En ese caso subimos de escala, salvo que ya estemos en la última unidad.
+  if (Number(scaled.toFixed(decimals)) >= 1000 && tier < UNITS.length - 1) {
+    tier += 1;
+    scaled = n / Math.pow(10, tier * 3);
+    decimals = scaled < 10 ? 2 : scaled < 100 ? 1 : 0;
+  }
+
   return scaled.toFixed(decimals) + UNITS[tier];
 }
 

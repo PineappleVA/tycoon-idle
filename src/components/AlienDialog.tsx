@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SOULS_MAX_PER_FALL, SOULS_MIN_PER_FALL } from '../game/data';
 import { formatMoney } from '../game/format';
 import { AlienSVG, GodSVG, DemonSVG } from './NpcAvatars';
 
@@ -574,10 +575,13 @@ const DEVIL_SETS = [
 
 export function HellDialog({ fallCount = 1, onDismiss }: { fallCount?: number; onDismiss: () => void }) {
   const lines = [...DEVIL_SETS[(Math.max(1, fallCount) - 1) % DEVIL_SETS.length]];
+  // El botín real es aleatorio (randomSouls), así que el texto lo refleja en vez
+  // de prometer un "+3" fijo que casi nunca coincidía con lo recibido.
+  const souls = `+${SOULS_MIN_PER_FALL}–${SOULS_MAX_PER_FALL} Almas 🔥`;
   // Al primer descenso, anuncia la Tienda Diabólica; en los siguientes la recuerda.
   const shopNote = fallCount === 1
-    ? 'Pero te dejo un regalo envenenado: 3 Almas 🔥 y acceso a mi Tienda Diabólica. Gástalas en poder. Te hará volver antes.'
-    : `Toma tus 3 Almas 🔥. Ya sabes: mi Tienda Diabólica te espera. Nadie se resiste a un buen pacto.`;
+    ? `Pero te dejo un regalo envenenado: ${souls} y acceso a mi Tienda Diabólica. Gástalas en poder. Te hará volver antes.`
+    : `Toma tus ${souls}. Ya sabes: mi Tienda Diabólica te espera. Nadie se resiste a un buen pacto.`;
   // Insertamos la nota justo antes de la firma final ("— El Diablo").
   lines.splice(lines.length - 1, 0, shopNote);
   return (

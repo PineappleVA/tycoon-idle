@@ -2,8 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BUSINESSES, DIABOLIC_ITEMS, OFFLINE_MIN_MS, SHOP_ITEMS, TAP_BASE_COST } from './data';
 import { ACHIEVEMENTS, Achievement } from './achievements';
 import {
+  accrueInvestors,
+  applyAlienRebirth,
+  applyHeaven,
+  applyHellFall,
+  applyPortalRebirth,
   automationUnlocked,
   bulkCost,
+  bulkUpgradeCost,
   businessCount,
   businessUpgrade,
   computeOffline,
@@ -17,7 +23,7 @@ import {
   managerCost,
   maxAffordable,
   randomSouls,
-  totalInvestorsEarned,
+  investorClaimFloor,
   totalPlots,
   OfflineResult,
   REBIRTH_TIERS,
@@ -39,6 +45,7 @@ function loadState(): { state: GameState; offline: OfflineResult | null } {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return { state: { ...DEFAULT_STATE }, offline: null };
     const parsed = JSON.parse(raw) as Partial<GameState>;
+    const lifetime = parsed.lifetimeEarned ?? parsed.totalEarned ?? 0;
     const state: GameState = {
       cash: parsed.cash ?? 0,
       totalEarned: parsed.totalEarned ?? 0,
@@ -54,14 +61,18 @@ function loadState(): { state: GameState; offline: OfflineResult | null } {
       tier1: parsed.tier1 ?? parsed.rebirths ?? 0,
       tier2: parsed.tier2 ?? 0,
       tier3: parsed.tier3 ?? 0,
-      lifetimeEarned: parsed.lifetimeEarned ?? parsed.totalEarned ?? 0,
+      lifetimeEarned: lifetime,
       plots: parsed.plots ?? 0,
       alienDialogSeen: parsed.alienDialogSeen ?? false,
       automated: parsed.automated ?? {},
       shopUpgrades: parsed.shopUpgrades ?? {},
       plotAssignments: parsed.plotAssignments ?? {},
       investors: parsed.investors ?? 0,
-      investorsClaimed: parsed.investorsClaimed ?? 0,
+      // Sanea partidas antiguas cuyo contador quedó por debajo del suelo.
+      investorsClaimed: investorClaimFloor({
+        lifetimeEarned: lifetime,
+        investorsClaimed: parsed.investorsClaimed ?? 0,
+      }),
       investorsSpent: parsed.investorsSpent ?? 0,
       heavenReached: parsed.heavenReached ?? false,
       hellFalls: parsed.hellFalls ?? 0,
@@ -125,15 +136,12 @@ export function useGame() {
         const inc = totalIncome(s) * (TICK_MS / 1000);
         if (inc <= 0) return s;
         const newLifetime = s.lifetimeEarned + inc;
-        const newTotalInv = totalInvestorsEarned(newLifetime);
-        const newInvestors = s.investors + Math.max(0, newTotalInv - s.investorsClaimed);
         return {
           ...s,
           cash: s.cash + inc,
           totalEarned: s.totalEarned + inc,
           lifetimeEarned: newLifetime,
-          investors: newInvestors,
-          investorsClaimed: newTotalInv,
+          ...accrueInvestors(s, newLifetime),
         };
       });
     }, TICK_MS);
@@ -284,6 +292,23 @@ export function useGame() {
     });
   }, []);
 
+  /** Compra `amount` mejoras de golpe en una sola transacción (precio = suma real). */
+  const upgradeBulk = useCallback((id: string, amount: number) => {
+    setState((s) => {
+      const def = BUSINESSES.find((b) => b.id === id);
+      if (!def || amount <= 0) return s;
+      if (businessCount(s, id) <= 0) return s;
+      const level = businessUpgrade(s, id);
+      const price = bulkUpgradeCost(def, level, amount);
+      if (s.cash < price) return s;
+      return {
+        ...s,
+        cash: s.cash - price,
+        upgrades: { ...s.upgrades, [id]: level + amount },
+      };
+    });
+  }, []);
+
   const upgradeTap = useCallback(() => {
     setState((s) => {
       const price = tapUpgradeCost(s.tapLevel);
@@ -339,116 +364,26 @@ export function useGame() {
         const isFirstAttempt = s.tier3 === 0;
         const wentHeaven = isFirstAttempt ? true : (forcedHeaven ?? Math.random() < HEAVEN_CHANCE);
         if (!wentHeaven) {
-          // INFIERNO: reset TOTAL excepto las "estadísticas de vida":
-          // - Dinero total ganado en la vida (lifetimeEarned)
-          // - Toques totales (taps)
-          // - Historial de renacimientos (rebirths/tier1/tier2/tier3)
-          // - heavenReached (el haber tocado el Cielo)
-          // - alienDialogSeen
-          // PERDES TODO LO DEMÁS: efectivo, negocios, mejoras, mánagers (siempre,
-          // aunque tengas Contrato Eterno), tap level, Cristales, Estrellas,
-          // asignaciones de parcelas.
-          const soulsGained = randomSouls();
           outcome = 'hell';
-          const fallen: GameState = {
-            ...DEFAULT_STATE,
-            rebirths: s.rebirths + 1,
-            taps: s.taps,
-            lifetimeEarned: s.lifetimeEarned,
-            tier1: s.tier1,
-            tier2: s.tier2,
-            tier3: s.tier3,
-            heavenReached: s.heavenReached,
-            alienDialogSeen: s.alienDialogSeen,
-            shopUpgrades: s.shopUpgrades,
-            crystals: 0,
-            stars: 0,
-            plots: 0,
-            plotAssignments: {},
-            // El Infierno da Almas ALEATORIAS (1 a 4) como "premio de consolación".
-            hellFalls: s.hellFalls + 1,
-            souls: s.souls + soulsGained,
-            lastSave: Date.now(),
-          };
+          const fallen = applyHellFall(s, randomSouls());
           persist(fallen);
           return fallen;
         }
-        // CIELO: ganas estrellas, puedes volver siempre.
         outcome = 'heaven';
-        const next: GameState = {
-          ...DEFAULT_STATE,
-          rebirths: s.rebirths + 1,
-          crystals: 0,
-          stars: s.stars + gained,
-          tier3: s.tier3 + 1,
-          heavenReached: true,
-          lifetimeEarned: s.lifetimeEarned,
-          alienDialogSeen: s.alienDialogSeen,
-          investors: s.investors,
-          investorsClaimed: s.investorsClaimed,
-          investorsSpent: s.investorsSpent,
-          shopUpgrades: s.shopUpgrades,
-          plotAssignments: s.plotAssignments,
-          automated: keepManagers ? s.automated : {},
-          hellFalls: s.hellFalls,
-          souls: s.souls,
-          lastSave: Date.now(),
-        };
+        const next = applyHeaven(s, gained, keepManagers);
         persist(next);
         return next;
       }
 
-      // ---- NIVEL 1: ALIENÍGENAS — ganas Inversores (no lingotes) ----
+      // ---- NIVEL 1: ALIENÍGENAS — ganas Inversores ----
       if (level === 1) {
-        const next: GameState = {
-          ...DEFAULT_STATE,
-          rebirths: s.rebirths + 1,
-          crystals: s.crystals,
-          stars: s.stars,
-          tier1: s.tier1 + 1,
-          tier2: s.tier2,
-          tier3: s.tier3,
-          heavenReached: s.heavenReached,
-          lifetimeEarned: s.lifetimeEarned,
-          alienDialogSeen: false,
-          // los inversores ganados se suman como bonus permanente
-          investors: s.investors + gained,
-          investorsClaimed: s.investorsClaimed + gained,
-          investorsSpent: s.investorsSpent,
-          shopUpgrades: s.shopUpgrades,
-          plotAssignments: s.plotAssignments,
-          automated: keepManagers ? s.automated : {},
-          hellFalls: s.hellFalls,
-          souls: s.souls,
-          lastSave: Date.now(),
-        };
+        const next = applyAlienRebirth(s, gained, keepManagers);
         persist(next);
         return next;
       }
 
       // ---- NIVEL 2: PORTAL — sacrificas Inversores, ganas Cristales ----
-      const next: GameState = {
-        ...DEFAULT_STATE,
-        rebirths: s.rebirths + 1,
-        crystals: s.crystals + gained,
-        stars: s.stars,
-        tier1: s.tier1,
-        tier2: s.tier2 + 1,
-        tier3: s.tier3,
-        heavenReached: s.heavenReached,
-        lifetimeEarned: s.lifetimeEarned,
-        alienDialogSeen: s.alienDialogSeen,
-        // El portal consume los inversores
-        investors: 0,
-        investorsClaimed: 0,
-        investorsSpent: 0,
-        shopUpgrades: s.shopUpgrades,
-        plotAssignments: s.plotAssignments,
-        automated: keepManagers ? s.automated : {},
-        hellFalls: s.hellFalls,
-        souls: s.souls,
-        lastSave: Date.now(),
-      };
+      const next = applyPortalRebirth(s, gained, keepManagers);
       persist(next);
       return next;
     });
@@ -576,6 +511,7 @@ export function useGame() {
     tap,
     buy,
     upgrade,
+    upgradeBulk,
     upgradeTap,
     toggleAutomation,
     claimOffline,

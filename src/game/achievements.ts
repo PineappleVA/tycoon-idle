@@ -1,5 +1,5 @@
 import { BUSINESSES } from './data';
-import { businessCount, businessUpgrade, GameState } from './logic';
+import { availableInvestors, businessCount, businessUpgrade, GameState } from './logic';
 
 export interface Achievement {
   id: string;
@@ -190,10 +190,10 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'alien-friends',
     name: 'Amigos del Espacio',
-    desc: 'Acumula 40 Lingotes',
+    desc: 'Acumula 40 Inversores',
     icon: '👽',
-    done: (s) => s.ingots >= 40,
-    progress: (s) => cap(s.ingots / 40),
+    done: (s) => availableInvestors(s) >= 40,
+    progress: (s) => cap(availableInvestors(s) / 40),
   },
 
   /* ---- Prestigio: Nivel 2 ---- */
@@ -263,11 +263,12 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'transcendent',
     name: 'Trascendente',
-    desc: 'Consigue al menos 1 Lingote, 1 Cristal y 1 Estrella',
+    desc: 'Consigue al menos 1 Inversor, 1 Cristal y 1 Estrella',
     icon: '🌟',
     hidden: true,
-    done: (s) => s.ingots >= 1 && s.crystals >= 1 && s.stars >= 1,
-    progress: (s) => cap((Math.min(s.ingots, 1) + Math.min(s.crystals, 1) + Math.min(s.stars, 1)) / 3),
+    done: (s) => availableInvestors(s) >= 1 && s.crystals >= 1 && s.stars >= 1,
+    progress: (s) =>
+      cap((Math.min(availableInvestors(s), 1) + Math.min(s.crystals, 1) + Math.min(s.stars, 1)) / 3),
   },
   {
     id: 'finger-of-doom',

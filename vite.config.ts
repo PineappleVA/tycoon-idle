@@ -16,4 +16,14 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  server: {
+    host: "0.0.0.0",
+    // Sin esto Vite responde 403 a cualquier host que no sea localhost, lo que
+    // rompe los previews servidos detrás de un proxy (túneles, contenedores…).
+    allowedHosts: true,
+  },
+  preview: {
+    host: "0.0.0.0",
+    allowedHosts: true,
+  },
 });

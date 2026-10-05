@@ -4,11 +4,14 @@ import {
   businessCount,
   businessIncome,
   businessUpgrade,
+  bulkUpgradeCost,
   costOf,
   employeesAssignedTo,
   hasFunction,
+  INVESTOR_BONUS_PER,
   isAutomated,
   managerCost,
+  REBIRTH_TIERS,
   upgradeCostOf,
 } from '../game/logic';
 import { formatMoney, formatNumber } from '../game/format';
@@ -196,24 +199,26 @@ export function BusinessDetail({
                 ))}
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-1.5">
-                {[1, 5, 10].map((n) => {
-                  const price = upgradeCostOf(def, level + n - 1);
-                  const can = count > 0 && state.cash >= price;
-                  return (
-                    <button
-                      key={n}
-                      onClick={() => {
-                        for (let k = 0; k < n; k++) game.upgrade(def.id);
-                      }}
-                      disabled={!can}
-                      className="rounded-lg bg-amber-500/90 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
-                    >
-                      +{n} · {formatMoney(price)}
-                    </button>
-                  );
-                })}
-              </div>
+              {/* Mejora múltiple: requiere la función "Mejora en Cadena" de la tienda.
+                  El precio es la SUMA de las n mejoras, no el de la última. */}
+              {hasFunction(state, 'bulkupgrade') && count > 0 && (
+                <div className="mt-3 grid grid-cols-3 gap-1.5">
+                  {[1, 5, 10].map((n) => {
+                    const price = bulkUpgradeCost(def, level, n);
+                    const can = state.cash >= price;
+                    return (
+                      <button
+                        key={n}
+                        onClick={() => game.upgradeBulk(def.id, n)}
+                        disabled={!can}
+                        className="rounded-lg bg-amber-500/90 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-400 active:scale-95 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                      >
+                        +{n} · {formatMoney(price)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </section>
 
@@ -243,13 +248,13 @@ export function BusinessDetail({
             </h3>
             <div className="flex flex-wrap gap-2">
               {state.crystals > 0 && (
-                <Chip icon="💠" label={`${formatNumber(state.crystals)} Cristales (+${state.crystals * 20}%)`} />
+                <Chip icon="💠" label={`${formatNumber(state.crystals)} Cristales (+${Math.round(state.crystals * REBIRTH_TIERS[1].bonusPer * 100)}%)`} />
               )}
               {state.stars > 0 && (
-                <Chip icon="⭐" label={`${formatNumber(state.stars)} Estrellas (+${state.stars * 120}%)`} />
+                <Chip icon="⭐" label={`${formatNumber(state.stars)} Estrellas (+${Math.round(state.stars * REBIRTH_TIERS[2].bonusPer * 100)}%)`} />
               )}
               {availableInvestors(state) > 0 && (
-                <Chip icon="👽" label={`${availableInvestors(state)} Inversores (+${(availableInvestors(state) * 0.7).toFixed(1)}%)`} />
+                <Chip icon="👽" label={`${availableInvestors(state)} Inversores (+${(availableInvestors(state) * INVESTOR_BONUS_PER * 100).toFixed(1)}%)`} />
               )}
               {state.crystals === 0 && state.stars === 0 && availableInvestors(state) === 0 && (
                 <div className="text-xs italic text-slate-500">Sin bonus activos aún.</div>
