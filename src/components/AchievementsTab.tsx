@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { cn } from '../lib/cn';
 import { ACHIEVEMENTS, type Achievement } from '../game/achievements';
+import { ACHIEVEMENT_BONUS_PER } from '../game/balance';
+import { formatNumber } from '../game/format';
 import type { GameState } from '../game/logic';
 import { Panel, ProgressBar } from './ui';
 
@@ -20,12 +22,27 @@ const FILTERS: { id: Filter; label: string }[] = [
 const PUBLIC_ACHIEVEMENTS = ACHIEVEMENTS.filter((a) => !a.hidden);
 const SECRET_TOTAL = ACHIEVEMENTS.length - PUBLIC_ACHIEVEMENTS.length;
 
-export function AchievementsTab({ state }: { state: GameState }) {
+export function AchievementsTab({
+  state,
+  sessionUnlocked,
+}: {
+  state: GameState;
+  /** Ids conseguidos en esta sesión: se marcan como nuevos. */
+  sessionUnlocked?: ReadonlySet<string>;
+}) {
   const [filter, setFilter] = useState<Filter>('all');
 
   const donePublic = PUBLIC_ACHIEVEMENTS.filter((a) => a.done(state)).length;
   const secretsFound = ACHIEVEMENTS.filter((a) => a.hidden && a.done(state)).length;
   const secretsLeft = SECRET_TOTAL - secretsFound;
+  const totalDone = donePublic + secretsFound;
+
+  // Los más cercanos a completarse, para que siempre haya un objetivo a la vista.
+  const nextUp = PUBLIC_ACHIEVEMENTS.filter((a) => !a.done(state))
+    .map((a) => ({ a, p: a.progress(state) }))
+    .filter((x) => x.p > 0)
+    .sort((x, y) => y.p - x.p)
+    .slice(0, 3);
 
   const visible = PUBLIC_ACHIEVEMENTS.filter((a) => {
     if (filter === 'done') return a.done(state);
@@ -43,6 +60,39 @@ export function AchievementsTab({ state }: { state: GameState }) {
           </span>
         </div>
         <ProgressBar value={PUBLIC_ACHIEVEMENTS.length ? donePublic / PUBLIC_ACHIEVEMENTS.length : 0} className="mt-2" />
+
+        {/* Los logros dan bonus real: hay que decirlo. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400">
+          <span aria-hidden>🏅</span>
+          <span>
+            Cada logro suma{' '}
+            <span className="font-bold text-amber-300">
+              +{formatNumber(ACHIEVEMENT_BONUS_PER * 100)}%
+            </span>{' '}
+            de ingreso permanente
+          </span>
+          {totalDone > 0 && (
+            <span className="text-amber-300/90">
+              · llevas +{formatNumber(totalDone * ACHIEVEMENT_BONUS_PER * 100)}%
+            </span>
+          )}
+        </div>
+
+        {nextUp.length > 0 && (
+          <div className="mt-2 rounded-xl bg-white/[0.03] px-2.5 py-2">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Próximo hito
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-300">
+              {nextUp.map(({ a, p }) => (
+                <span key={a.id} className="tabular-nums">
+                  {a.icon} {a.name}{' '}
+                  <span className="text-amber-300/80">{Math.round(p * 100)}%</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Pista de secretos: no revela nombres ni descripciones. */}
         {SECRET_TOTAL > 0 && (
@@ -74,7 +124,7 @@ export function AchievementsTab({ state }: { state: GameState }) {
       <div className="grid gap-2 sm:grid-cols-2">
         {visible.map((a, i) => (
           <div key={a.id} className="animate-rise" style={{ animationDelay: `${Math.min(i, 8) * 35}ms` }}>
-            <AchievementCard achievement={a} state={state} />
+            <AchievementCard achievement={a} state={state} isNew={sessionUnlocked?.has(a.id) ?? false} />
           </div>
         ))}
         {visible.length === 0 && (
@@ -87,7 +137,15 @@ export function AchievementsTab({ state }: { state: GameState }) {
   );
 }
 
-function AchievementCard({ achievement: a, state }: { achievement: Achievement; state: GameState }) {
+function AchievementCard({
+  achievement: a,
+  state,
+  isNew,
+}: {
+  achievement: Achievement;
+  state: GameState;
+  isNew: boolean;
+}) {
   const complete = a.done(state);
   const progress = a.progress(state);
 
@@ -98,6 +156,7 @@ function AchievementCard({ achievement: a, state }: { achievement: Achievement; 
         complete
           ? 'border-amber-300/40 bg-amber-500/10 shadow-lg shadow-amber-900/10'
           : 'border-white/10 bg-white/[0.03] hover:border-white/20',
+        isNew && complete && 'animate-achieve-glow border-amber-200/70',
       )}
     >
       <div
@@ -112,6 +171,11 @@ function AchievementCard({ achievement: a, state }: { achievement: Achievement; 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className={cn('truncate text-sm font-bold', complete && 'text-amber-200')}>{a.name}</span>
+          {isNew && complete && (
+            <span className="rounded-md bg-amber-300/90 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-950">
+              ¡Nuevo!
+            </span>
+          )}
           {complete && <span aria-hidden>✅</span>}
         </div>
         <div className="text-[11px] text-slate-400">{a.desc}</div>

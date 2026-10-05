@@ -1,4 +1,6 @@
+import { ACHIEVEMENTS } from './achievements';
 import {
+  ACHIEVEMENT_BONUS_PER,
   BALANZA_THRESHOLD,
   CRYSTAL_BONUS_PER,
   HEAVEN_CHANCE,
@@ -614,7 +616,22 @@ export function totalIncome(state: GameState): number {
     const base = businessBaseIncome(def, businessCount(state, def.id), businessUpgrade(state, def.id));
     sum += base * plotBonusForBusiness(state, def.id);
   }
-  return sum * rebirthMultiplier(state);
+  return sum * rebirthMultiplier(state) * achievementMultiplier(state);
+}
+
+/**
+ * Los logros dejan de ser puro adorno: cada uno suma un bonus permanente de
+ * ingreso. Se cuentan sobre el estado (predicados puros), así que el bonus
+ * sobrevive a los renacimientos y no depende de nada externo.
+ */
+export function achievementsUnlocked(state: GameState): number {
+  let n = 0;
+  for (const a of ACHIEVEMENTS) if (a.done(state)) n++;
+  return n;
+}
+
+export function achievementMultiplier(state: GameState): number {
+  return 1 + achievementsUnlocked(state) * ACHIEVEMENT_BONUS_PER;
 }
 
 export function tapValue(state: GameState): number {

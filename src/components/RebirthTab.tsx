@@ -5,6 +5,8 @@ import {
   availableInvestors,
   investorsUnlocked,
   REBIRTH_TIERS,
+  achievementMultiplier,
+  achievementsUnlocked,
   rebirthMultiplier,
   type AscensionOutcome,
   type TierLevel,
@@ -25,7 +27,8 @@ export function RebirthTab({
   onRebirth: (level: TierLevel, choice?: AscensionOutcome) => void;
 }) {
   const { state } = game;
-  const mult = rebirthMultiplier(state);
+  const achieveMult = achievementMultiplier(state);
+  const mult = rebirthMultiplier(state) * achieveMult;
   const unlockedTiers = REBIRTH_TIERS.filter((t) => tierUnlocked(state, t.level));
   const [sub, setSub] = useState<TierLevel>(() => unlockedTiers[unlockedTiers.length - 1]?.level ?? 1);
 
@@ -46,6 +49,12 @@ export function RebirthTab({
 
   const summary = [
     { label: 'Bonus', value: `x${formatNumber(mult)}`, tone: 'text-amber-300', show: true },
+    {
+      label: 'Logros',
+      value: `${achievementsUnlocked(state)}🏅`,
+      tone: 'text-yellow-300',
+      show: achieveMult > 1,
+    },
     { label: 'Cristales', value: `${formatNumber(state.crystals)}💠`, tone: 'text-fuchsia-300', show: state.crystals > 0 },
     { label: 'Estrellas', value: `${formatNumber(state.stars)}⭐`, tone: 'text-sky-300', show: state.stars > 0 },
     { label: 'Inversores', value: `${availableInvestors(state)}👽`, tone: 'text-lime-300', show: investorsUnlocked(state) },
@@ -64,6 +73,9 @@ export function RebirthTab({
             <h2 className="text-2xl font-bold text-white">Renacimiento</h2>
             <p className="text-sm text-fuchsia-200/80">
               Bonus total: <span className="font-bold tabular-nums text-amber-300">x{formatNumber(mult)}</span>
+              {achieveMult > 1 && (
+                <span className="text-yellow-300/80"> · logros +{formatNumber((achieveMult - 1) * 100)}%</span>
+              )}
             </p>
           </div>
         </div>

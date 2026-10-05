@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   MANAGER_TICK_MS,
+  MAX_TOASTS,
   OFFLINE_MIN_MS,
   SAVE_INTERVAL_MS,
   SAVE_KEY,
   SAVE_VERSION,
   TICK_MS,
+  TOAST_MS,
 } from './balance';
 import { ACHIEVEMENTS, type Achievement } from './achievements';
-import { BUSINESSES } from './data';
 import {
   applyTap,
   assignPlot as assignPlotPure,
@@ -35,11 +36,7 @@ import {
   upgradeTap as upgradeTapPure,
   applyAlienRebirth,
   applyHeaven,
-  businessCount,
   businessDef,
-  businessIncome,
-  plotBonusForBusiness,
-  rebirthMultiplier,
   applyHellFall,
   applyPortalRebirth,
   currencyFromEarned,
@@ -48,8 +45,6 @@ import {
 } from './logic';
 
 export type BuyAmount = 1 | 10 | 100 | 1000 | 'max';
-
-const TOAST_MS = 4_500;
 
 /** Negocio que usa el panel de debug para fijar un ingreso objetivo. */
 const DEBUG_BUSINESS = 'lemonade';
@@ -158,15 +153,28 @@ export function useGame() {
     [state],
   );
 
+  // Los temporizadores de cierre NO pueden devolverse como cleanup de este
+  // efecto: `newlyUnlocked` se recalcula en cada tick, así que el cleanup se
+  // ejecutaba a los 200 ms y borraba el cierre antes de que se disparara.
+  // Se guardan en un ref y sólo se limpian al desmontar.
+  const toastTimers = useRef<number[]>([]);
+
   useEffect(() => {
     if (newlyUnlocked.length === 0) return;
     for (const a of newlyUnlocked) unlockedRef.current.add(a.id);
-    setToasts((t) => [...t, ...newlyUnlocked]);
-    const timers = newlyUnlocked.map((a) =>
-      window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== a.id)), TOAST_MS),
-    );
-    return () => timers.forEach(window.clearTimeout);
+    // Se limita la cola: si caen muchos logros a la vez no deben tapar el juego.
+    setToasts((t) => [...t, ...newlyUnlocked].slice(-MAX_TOASTS));
+    for (const a of newlyUnlocked) {
+      toastTimers.current.push(
+        window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== a.id)), TOAST_MS),
+      );
+    }
   }, [newlyUnlocked]);
+
+  useEffect(() => {
+    const timers = toastTimers;
+    return () => timers.current.forEach(window.clearTimeout);
+  }, []);
 
   /* -------------------------------------------------------------- */
   /* Acciones                                                        */
@@ -301,34 +309,51 @@ export function useGame() {
       const def = businessDef(DEBUG_BUSINESS);
       if (!def) return s;
 
-      const othersIncome = BUSINESSES.filter((b) => b.id !== DEBUG_BUSINESS).reduce(
-        (sum, b) => sum + businessIncome(b, s),
-        0,
-      );
-      const remaining = Math.max(0, target - othersIncome);
-      const divisor = def.baseIncome * plotBonusForBusiness(s, DEBUG_BUSINESS) * rebirthMultiplier(s);
+      const withLemonade = (count: number, level: number): GameState => ({
+        ...s,
+        businesses: { ...s.businesses, [DEBUG_BUSINESS]: count },
+        upgrades: { ...s.upgrades, [DEBUG_BUSINESS]: level },
+      });
 
-      // El ingreso sólo puede tomar valores discretos (unidades x 2^nivel), así
-      // que se busca la combinación que más se acerca al objetivo. Redondear el
-      // logaritmo sin más daba saltos de hasta x1,6 (pedir 10.000 y obtener 13.107).
-      let best = { level: 0, count: Math.max(1, businessCount(s, DEBUG_BUSINESS)), err: Infinity };
-      if (divisor > 0 && remaining > 0) {
-        for (let level = 0; level <= 60; level++) {
-          const perUnit = divisor * Math.pow(2, level);
-          const count = Math.max(1, Math.round(remaining / perUnit));
-          const err = Math.abs(perUnit * count - remaining) / remaining;
-          if (err < best.err) best = { level, count, err };
-          if (err === 0) break;
-        }
-      } else {
-        best = { level: 0, count: 0, err: 0 };
+      if (target <= 0) return withLemonade(0, 0);
+
+      /**
+       * El ingreso total es monótono no decreciente respecto a las "unidades
+       * efectivas" de limonada (unidades x 2^nivel): más unidades suben la base
+       * y, como mucho, desbloquean logros que suben el multiplicador. Se busca
+       * por bisección el valor que alcanza el objetivo y luego se elige la
+       * factorización unidades/nivel que menos se desvía.
+       *
+       * Antes se despejaba el nivel con un logaritmo y un multiplicador fijo, y
+       * fallaba dos veces: el redondeo del log2 daba saltos de x1,6 (pedir
+       * 10.000 -> 13.107) y el bonus de logros cambiaba al cambiar las unidades
+       * (pedir 10.000 -> 11.200).
+       */
+      let lo = 0;
+      let hi = 1;
+      while (hi < 1e15 && totalIncome(withLemonade(hi, 0)) < target) hi *= 2;
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (totalIncome(withLemonade(mid, 0)) < target) lo = mid + 1;
+        else hi = mid;
+      }
+      // `lo` es el primer valor que alcanza el objetivo; se compara con el
+      // anterior y se escoge el que quede más cerca.
+      const below = Math.max(0, lo - 1);
+      const k =
+        Math.abs(totalIncome(withLemonade(below, 0)) - target) <
+        Math.abs(totalIncome(withLemonade(lo, 0)) - target)
+          ? below
+          : lo;
+
+      let best = { count: k, level: 0, err: Math.abs(totalIncome(withLemonade(k, 0)) - target) };
+      for (let level = 1; level <= 50; level++) {
+        const count = Math.max(1, Math.round(k / Math.pow(2, level)));
+        const err = Math.abs(totalIncome(withLemonade(count, level)) - target);
+        if (err < best.err) best = { count, level, err };
       }
 
-      return {
-        ...s,
-        businesses: { ...s.businesses, [DEBUG_BUSINESS]: best.count },
-        upgrades: { ...s.upgrades, [DEBUG_BUSINESS]: best.level },
-      };
+      return withLemonade(best.count, best.level);
     });
   }, []);
 

@@ -137,3 +137,13 @@ export const SAVE_INTERVAL_MS = 5_000;
 /** Clave y versión del guardado en localStorage. */
 export const SAVE_KEY = 'tycoon-save';
 export const SAVE_VERSION = 2;
+
+/* ---- Logros ---- */
+/** Bonus de ingreso permanente por cada logro desbloqueado (2 % c/u). */
+export const ACHIEVEMENT_BONUS_PER = 0.02;
+
+/* ---- Avisos de logro ---- */
+/** Cuánto vive un aviso en pantalla. La animación CSS dura exactamente esto. */
+export const TOAST_MS = 4_500;
+/** Máximo de avisos simultáneos: el resto se descarta para no tapar el juego. */
+export const MAX_TOASTS = 4;

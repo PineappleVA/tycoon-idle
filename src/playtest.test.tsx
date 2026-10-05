@@ -134,6 +134,75 @@ describe('playtest', () => {
     expect(document.body.innerHTML).not.toContain('NaN');
   });
 
+  it('REGRESIÓN: el aviso de logro desaparece solo, no se queda pegado', () => {
+    // El efecto de avisos dependía de `state`, que cambia cada tick: su cleanup
+    // borraba el setTimeout de cierre antes de que llegara a dispararse, así que
+    // el cartel de "¡Logro desbloqueado!" no se iba nunca.
+    seedSave();
+    render(<App />);
+    advance(800);
+
+    click(screen.getByLabelText('Toca para trabajar'));
+    advance(300);
+    expect(screen.queryByText('Primer Dólar'), 'el aviso debe aparecer').not.toBeNull();
+
+    advance(6_000); // TOAST_MS = 4_500
+    expect(screen.queryByText('Primer Dólar'), 'el aviso debe desaparecer solo').toBeNull();
+  });
+
+  it('desbloquear un logro dispara el confeti y luego se limpia solo', () => {
+    seedSave();
+    render(<App />);
+    advance(800);
+    expect(document.querySelectorAll('.animate-confetti').length).toBe(0);
+
+    click(screen.getByLabelText('Toca para trabajar'));
+    advance(300);
+    expect(document.querySelectorAll('.animate-confetti').length).toBeGreaterThan(10);
+
+    // Pasada la ráfaga no queda nada en el DOM.
+    advance(3_000);
+    expect(document.querySelectorAll('.animate-confetti').length).toBe(0);
+  });
+
+  it('la pestaña Logros explica el bonus que dan los logros', () => {
+    seedSave({ cash: 1e9, totalEarned: 1e9, lifetimeEarned: 1e9, taps: 500 });
+    render(<App />);
+    advance(800);
+    clickTab('Logros');
+    advance(400);
+
+    // El bonus por logro y el acumulado tienen que estar a la vista.
+    expect(screen.queryByText(/de ingreso permanente/)).not.toBeNull();
+    expect(screen.queryByText(/\+2%/)).not.toBeNull();
+    expect(screen.queryByText(/llevas \+/)).not.toBeNull();
+    // Y sigue sin filtrar los secretos.
+    expect(screen.queryByText('Primer Dólar')).not.toBeNull(); // público, sí se ve
+  });
+
+  it('los avisos no se apilan sin límite', () => {
+    // Estado que desbloquea muchos logros de golpe al primer toque.
+    seedSave({ cash: 1e12, totalEarned: 1e12, lifetimeEarned: 1e12, taps: 99_999 });
+    render(<App />);
+    advance(800);
+    click(screen.getByLabelText('Toca para trabajar'));
+    advance(300);
+    const avisos = document.querySelectorAll('.animate-toast');
+    expect(avisos.length).toBeGreaterThan(0);
+    expect(avisos.length).toBeLessThanOrEqual(4);
+  });
+
+  it('un logro recién conseguido se marca como nuevo en la pestaña', () => {
+    seedSave();
+    render(<App />);
+    advance(800);
+    click(screen.getByLabelText('Toca para trabajar'));
+    advance(400);
+    clickTab('Logros');
+    advance(400);
+    expect(screen.queryByText('¡Nuevo!'), 'debe marcarse el logro de esta sesión').not.toBeNull();
+  });
+
   it('REGRESIÓN: los tours arrancan aunque haya ingreso pasivo', () => {
     // Antes el setTimeout de 400ms se reiniciaba en cada tick de 100ms y
     // ningún tutorial aparecía mientras el juego producía dinero.
@@ -331,12 +400,20 @@ describe('playtest', () => {
       fireEvent.change(input, { target: { value: '10000' } });
     });
     click(buttonByText(/^Aplicar$/));
-    advance(1_500);
+    // Se mide sin dejar correr el reloj (advance() siempre avanza un step de
+    // 200 ms y eso dispararía un tick): en cuanto se gana dinero se desbloquean
+    // logros y cada logro suma +2 % de ingreso, así que la tasa sube sola.
+    // Eso es la mecánica nueva, no un fallo del panel.
+    act(() => {});
 
-    // Tras aplicar, el ingreso por segundo mostrado debe rondar los 10.000.
     const panel = screen.getByText('🐛 Modo Debug').closest('div[class*="fixed"]')!;
-    const incomeText = within(panel as HTMLElement).getByText('Ingreso/s').parentElement?.textContent ?? '';
-    expect(incomeText).toMatch(/\$10\.0K|\$9\.\d+K/);
+    const incomeOf = () =>
+      within(panel as HTMLElement).getByText('Ingreso/s').parentElement?.textContent ?? '';
+    expect(incomeOf()).toMatch(/\$10\.0K|\$9\.\d+K/);
+
+    // Y tras jugar un poco sólo puede subir: los logros son monótonos.
+    advance(1_500);
+    expect(incomeOf()).toMatch(/\$1[0-9]\.\dK/);
   });
 
   it('sobrevive a una partida corrupta y a un reloj atrasado', () => {

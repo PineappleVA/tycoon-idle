@@ -11,6 +11,9 @@ import { DEFAULT_STATE, type GameState } from './game/logic';
 import { SAVE_KEY } from './game/balance';
 import { BUSINESSES } from './game/data';
 import {
+  achievementMultiplier,
+  businessDef,
+  businessIncome,
   totalIncome,
   rebirthMultiplier,
   availableInvestors,
@@ -163,10 +166,13 @@ describe('playtest endgame', () => {
 
     const s = savedState();
     expect(s.plotAssignments[0]).toBe('lemonade');
-    const expected = totalIncome({ ...s, cash: s.cash });
-    expect(expected).toBeGreaterThan(before);
-    // +100 % sobre el negocio empleado: el ingreso de ese negocio se duplica.
-    expect(totalIncome(s)).toBeCloseTo(before * 2, 6);
+    // +100 % sobre el negocio empleado: SU ingreso se duplica. Se mide el
+    // negocio, no el total, porque desbloquear el logro "Jefe de Personal"
+    // también sube el multiplicador global de logros.
+    const lemonade = businessDef('lemonade')!;
+    expect(businessIncome(lemonade, s)).toBeCloseTo(businessIncome(lemonade, seeded) * 2, 6);
+    expect(totalIncome(s)).toBeGreaterThanOrEqual(before * 2);
+    expect(achievementMultiplier(s)).toBeGreaterThanOrEqual(achievementMultiplier(seeded));
   });
 
   it('comprar un mánager automatiza el negocio y sigue comprando solo', () => {

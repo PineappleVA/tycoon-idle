@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACHIEVEMENT_BONUS_PER,
   BALANZA_THRESHOLD,
   HEAVEN_CHANCE,
   INVESTOR_PER_EARNED,
@@ -12,6 +13,7 @@ import {
   SOULS_MIN_PER_FALL,
   UPGRADE_INCOME_MULT,
 } from './balance';
+import { ACHIEVEMENTS } from './achievements';
 import { BUSINESSES } from './data';
 import {
   accrueInvestors,
@@ -56,6 +58,8 @@ import {
   totalPlots,
   upgradeBusiness,
   upgradeTap,
+  achievementMultiplier,
+  achievementsUnlocked,
 } from './logic';
 
 /** Estado de partida rica, reutilizado por varios bloques. */
@@ -545,5 +549,43 @@ describe('sanitizeState', () => {
       plotAssignments: { 0: 'lemonade', 1: 'invento', 99: 'pizza' },
     });
     expect(s.plotAssignments).toEqual({ 0: 'lemonade' });
+  });
+});
+
+describe('bonus de logros', () => {
+  it('sin logros el multiplicador es 1', () => {
+    const s: GameState = { ...DEFAULT_STATE, cash: 0, totalEarned: 0, lifetimeEarned: 0 };
+    expect(achievementsUnlocked(s)).toBe(0);
+    expect(achievementMultiplier(s)).toBe(1);
+  });
+
+  it('cada logro suma su parte y el tope es el número de logros', () => {
+    const pobre: GameState = { ...DEFAULT_STATE, totalEarned: 0, lifetimeEarned: 0 };
+    const rico: GameState = { ...DEFAULT_STATE, cash: 1e18, totalEarned: 1e18, lifetimeEarned: 1e18,
+      taps: 1e6, businesses: Object.fromEntries(BUSINESSES.map((b) => [b.id, 10_000])),
+      upgrades: Object.fromEntries(BUSINESSES.map((b) => [b.id, 50])) };
+    const n = achievementsUnlocked(rico);
+    expect(n).toBeGreaterThan(achievementsUnlocked(pobre));
+    expect(achievementMultiplier(rico)).toBeCloseTo(1 + n * ACHIEVEMENT_BONUS_PER, 10);
+    // Acotado: nunca puede desbocarse.
+    expect(achievementMultiplier(rico)).toBeLessThanOrEqual(1 + ACHIEVEMENTS.length * ACHIEVEMENT_BONUS_PER);
+  });
+
+  it('el bonus entra en el ingreso total y es monótono', () => {
+    const base: GameState = { ...DEFAULT_STATE, businesses: { lemonade: 10 } };
+    const conLogro: GameState = { ...base, totalEarned: 1e6, lifetimeEarned: 1e6 };
+    expect(achievementMultiplier(conLogro)).toBeGreaterThan(achievementMultiplier(base));
+    expect(totalIncome(conLogro)).toBeGreaterThan(totalIncome(base));
+    // Es exactamente proporcional: el bonus no toca la base.
+    expect(totalIncome(conLogro) / totalIncome(base)).toBeCloseTo(
+      achievementMultiplier(conLogro) / achievementMultiplier(base), 10);
+  });
+
+  it('sobrevive al renacimiento: los logros no se pierden', () => {
+    const antes: GameState = { ...DEFAULT_STATE, totalEarned: 20e6, lifetimeEarned: 20e6,
+      businesses: Object.fromEntries(BUSINESSES.map((b) => [b.id, 10])) };
+    const despues = applyAlienRebirth(antes, 5, false);
+    expect(achievementsUnlocked(despues)).toBeGreaterThan(0);
+    expect(achievementMultiplier(despues)).toBeGreaterThan(1);
   });
 });

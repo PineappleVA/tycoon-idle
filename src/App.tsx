@@ -16,6 +16,7 @@ import { AchievementsTab } from './components/AchievementsTab';
 import { AlienDialog, GodDialog, HellDialog } from './components/AlienDialog';
 import { Background } from './components/Background';
 import { BusinessDetail } from './components/BusinessDetail';
+import { Celebration } from './components/Celebration';
 import { BusinessTab } from './components/BusinessTab';
 import { DebugPanel } from './components/DebugPanel';
 import { OfflineInvoice } from './components/OfflineInvoice';
@@ -151,6 +152,24 @@ export default function App() {
     }
   }, [game]);
 
+  /* ---------------- Confeti de logros ---------------- */
+  // Se dispara sólo con ids que no se habían visto: si un aviso caduca y cambia
+  // el "último", no debe volver a saltar el confeti.
+  const seenToasts = useRef<Set<string>>(new Set());
+  const [celebration, setCelebration] = useState<string | null>(null);
+  const [sessionUnlocked, setSessionUnlocked] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    const fresh = game.toasts.filter((t) => !seenToasts.current.has(t.id));
+    for (const t of game.toasts) seenToasts.current.add(t.id);
+    if (fresh.length === 0) return;
+    setCelebration(fresh[fresh.length - 1].id);
+    setSessionUnlocked((prev) => {
+      const next = new Set(prev);
+      for (const t of fresh) next.add(t.id);
+      return next;
+    });
+  }, [game.toasts]);
+
   /* ---------------- Panel de debug ---------------- */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -170,6 +189,7 @@ export default function App() {
   return (
     <div className="relative min-h-screen text-slate-100">
       <Background />
+      <Celebration trigger={celebration} />
       <Toasts toasts={game.toasts} />
 
       <div className="relative mx-auto max-w-6xl px-4 py-6">
@@ -189,7 +209,9 @@ export default function App() {
               {tab === 'upgrades' && <UpgradesTab game={game} />}
               {tab === 'rebirth' && <RebirthTab game={game} onRebirth={doRebirth} />}
               {tab === 'stats' && <StatsTab game={game} />}
-              {tab === 'achievements' && <AchievementsTab state={state} />}
+              {tab === 'achievements' && (
+                <AchievementsTab state={state} sessionUnlocked={sessionUnlocked} />
+              )}
             </div>
           </div>
         </div>
