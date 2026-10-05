@@ -288,13 +288,13 @@ export const ACHIEVEMENTS: Achievement[] = [
     progress: () => 0,
   },
   {
-    // Ahora mide el tiempo real de la vida actual (runStartedAt), no el lifetime.
+    // Puro: usa runDurationMs (acumulado por el tick) en vez de Date.now().
     id: 'speed-demon',
     name: 'Velocista',
-    desc: 'Gana $1.000 en menos de 60 segundos desde el inicio de una vida',
+    desc: 'Gana $1.000 en menos de 60 segundos de juego en una vida',
     icon: '🏎️',
     hidden: true,
-    done: (s) => s.totalEarned >= 1_000 && Date.now() - s.runStartedAt < 60_000,
+    done: (s) => s.totalEarned >= 1_000 && s.runDurationMs < 60_000,
     progress: (s) => toward(s.totalEarned, 1_000),
   },
   {

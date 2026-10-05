@@ -120,9 +120,12 @@ export const BALANZA_THRESHOLD = 3;
 /* Bucle de juego y guardado                                           */
 /* ------------------------------------------------------------------ */
 
-/** Intervalo nominal del tick de ingresos. El tick real usa delta-time,
- *  así que esto sólo fija la granularidad, no la velocidad del juego. */
-export const TICK_MS = 100;
+/**
+ * Intervalo del tick de ingresos. El bucle usa delta-time, así que este valor
+ * sólo fija la granularidad del repintado, NO la velocidad del juego: subirlo
+ * no ralentiza nada y reduce los re-renders proporcionalmente.
+ */
+export const TICK_MS = 200;
 
 /** Delta máximo que se aplica de golpe: evita saltos enormes si el navegador
  *  suspende la pestaña (de eso ya se ocupa el cálculo offline). */

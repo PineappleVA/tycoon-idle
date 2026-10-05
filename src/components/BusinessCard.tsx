@@ -92,11 +92,10 @@ function OwnedBusinessCard({
   }, [count]);
 
   return (
-    <button
-      onClick={() => onSelect(id)}
+    <div
       className={cn(
-        'group relative w-full cursor-pointer overflow-hidden rounded-2xl border p-4 text-left backdrop-blur transition-all duration-200',
-        'hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60',
+        'group relative w-full overflow-hidden rounded-2xl border p-4 text-left backdrop-blur transition-all duration-200',
+        'hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/30',
         flash
           ? 'animate-purchase-flash border-emerald-400/60 bg-emerald-500/10'
           : 'border-white/10 bg-white/[0.05] hover:border-white/20 hover:bg-white/[0.08]',
@@ -108,7 +107,15 @@ function OwnedBusinessCard({
           def.gradient,
         )}
       />
-      <div className="relative flex items-center gap-3">
+
+      {/* Cabecera: es el único elemento clicable que abre el detalle. Antes toda
+          la tarjeta era un <button> con <button> dentro, que es HTML inválido y
+          rompía la accesibilidad y la hidratación. */}
+      <button
+        onClick={() => onSelect(id)}
+        className="relative flex w-full items-center gap-3 rounded-xl text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60"
+        aria-label={`Ver detalle de ${def.name}`}
+      >
         <div
           className={cn(
             'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-2xl shadow-lg transition-transform duration-200 group-hover:scale-110',
@@ -129,7 +136,10 @@ function OwnedBusinessCard({
             {formatNumber(count)} uds · {formatMoney(myIncome)}/s
           </div>
         </div>
-      </div>
+        <span className="shrink-0 text-slate-500 transition group-hover:text-slate-300" aria-hidden>
+          ›
+        </span>
+      </button>
 
       <div className="relative mt-3 grid grid-cols-2 gap-2">
         <ActionButton
@@ -151,10 +161,7 @@ function OwnedBusinessCard({
       {autoUnlocked && (
         <button
           data-automation
-          onClick={(e) => {
-            e.stopPropagation();
-            game.toggleAutomation(id);
-          }}
+          onClick={() => game.toggleAutomation(id)}
           disabled={!automated && !canAffordManager}
           className={cn(
             'mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition',
@@ -171,7 +178,7 @@ function OwnedBusinessCard({
           </span>
         </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -203,10 +210,7 @@ function ActionButton({
   } as const;
   return (
     <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
+      onClick={onClick}
       disabled={disabled}
       className={cn(
         'flex flex-col items-center rounded-xl px-3 py-2 text-white transition active:scale-95',

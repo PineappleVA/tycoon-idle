@@ -4,27 +4,32 @@ import { ACHIEVEMENTS, type Achievement } from '../game/achievements';
 import type { GameState } from '../game/logic';
 import { Panel, ProgressBar } from './ui';
 
-type Filter = 'all' | 'done' | 'pending' | 'secret';
+type Filter = 'all' | 'done' | 'pending';
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'Todos' },
   { id: 'done', label: 'Conseguidos' },
   { id: 'pending', label: 'Pendientes' },
-  { id: 'secret', label: 'Secretos' },
 ];
+
+/**
+ * Los logros secretos NO se listan nunca, ni conseguidos ni pendientes: sólo
+ * se avisa de cuántos existen y de cuántos has descubierto. Aparecen por
+ * sorpresa como toast al desbloquearse.
+ */
+const PUBLIC_ACHIEVEMENTS = ACHIEVEMENTS.filter((a) => !a.hidden);
+const SECRET_TOTAL = ACHIEVEMENTS.length - PUBLIC_ACHIEVEMENTS.length;
 
 export function AchievementsTab({ state }: { state: GameState }) {
   const [filter, setFilter] = useState<Filter>('all');
 
-  const doneCount = ACHIEVEMENTS.filter((a) => a.done(state)).length;
-  const hiddenPending = ACHIEVEMENTS.filter((a) => a.hidden && !a.done(state)).length;
+  const donePublic = PUBLIC_ACHIEVEMENTS.filter((a) => a.done(state)).length;
+  const secretsFound = ACHIEVEMENTS.filter((a) => a.hidden && a.done(state)).length;
+  const secretsLeft = SECRET_TOTAL - secretsFound;
 
-  const visible = ACHIEVEMENTS.filter((a) => {
-    const complete = a.done(state);
-    if (a.hidden && !complete) return filter === 'secret';
-    if (filter === 'done') return complete;
-    if (filter === 'pending') return !complete;
-    if (filter === 'secret') return a.hidden;
+  const visible = PUBLIC_ACHIEVEMENTS.filter((a) => {
+    if (filter === 'done') return a.done(state);
+    if (filter === 'pending') return !a.done(state);
     return true;
   });
 
@@ -34,13 +39,18 @@ export function AchievementsTab({ state }: { state: GameState }) {
         <div className="flex items-center justify-between text-sm">
           <span className="font-bold">Progreso de logros</span>
           <span className="tabular-nums text-amber-300">
-            {doneCount}/{ACHIEVEMENTS.length}
+            {donePublic}/{PUBLIC_ACHIEVEMENTS.length}
           </span>
         </div>
-        <ProgressBar value={doneCount / ACHIEVEMENTS.length} className="mt-2" />
-        {hiddenPending > 0 && (
+        <ProgressBar value={PUBLIC_ACHIEVEMENTS.length ? donePublic / PUBLIC_ACHIEVEMENTS.length : 0} className="mt-2" />
+
+        {/* Pista de secretos: no revela nombres ni descripciones. */}
+        {SECRET_TOTAL > 0 && (
           <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-500">
-            <span aria-hidden>🔒</span> {hiddenPending} logro(s) secreto(s) por descubrir…
+            <span aria-hidden>🔒</span>
+            {secretsLeft > 0
+              ? `${secretsLeft} logro(s) secreto(s) por descubrir…`
+              : `¡Has descubierto los ${SECRET_TOTAL} logros secretos!`}
           </div>
         )}
 
@@ -69,7 +79,7 @@ export function AchievementsTab({ state }: { state: GameState }) {
         ))}
         {visible.length === 0 && (
           <p className="col-span-full rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-6 text-center text-xs text-slate-500">
-            No hay logros en esta categoría.
+            {filter === 'done' ? 'Todavía no has conseguido ninguno.' : '¡Lo tienes todo hecho! 🎉'}
           </p>
         )}
       </div>
@@ -102,11 +112,6 @@ function AchievementCard({ achievement: a, state }: { achievement: Achievement; 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className={cn('truncate text-sm font-bold', complete && 'text-amber-200')}>{a.name}</span>
-          {a.hidden && (
-            <span className="rounded bg-fuchsia-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-fuchsia-300">
-              Secreto
-            </span>
-          )}
           {complete && <span aria-hidden>✅</span>}
         </div>
         <div className="text-[11px] text-slate-400">{a.desc}</div>

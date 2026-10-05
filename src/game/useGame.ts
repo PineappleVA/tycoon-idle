@@ -8,6 +8,7 @@ import {
   TICK_MS,
 } from './balance';
 import { ACHIEVEMENTS, type Achievement } from './achievements';
+import { BUSINESSES } from './data';
 import {
   applyTap,
   assignPlot as assignPlotPure,
@@ -16,6 +17,7 @@ import {
   claimOffline as claimOfflinePure,
   computeOffline,
   DEFAULT_STATE,
+  dismissOffline as dismissOfflinePure,
   earn,
   type GameState,
   hasFunction,
@@ -33,6 +35,11 @@ import {
   upgradeTap as upgradeTapPure,
   applyAlienRebirth,
   applyHeaven,
+  businessCount,
+  businessDef,
+  businessIncome,
+  plotBonusForBusiness,
+  rebirthMultiplier,
   applyHellFall,
   applyPortalRebirth,
   currencyFromEarned,
@@ -43,6 +50,9 @@ import {
 export type BuyAmount = 1 | 10 | 100 | 1000 | 'max';
 
 const TOAST_MS = 4_500;
+
+/** Negocio que usa el panel de debug para fijar un ingreso objetivo. */
+const DEBUG_BUSINESS = 'lemonade';
 
 function persist(state: GameState) {
   try {
@@ -192,13 +202,24 @@ export function useGame() {
     [],
   );
 
+  // Se calcula fuera del updater y se persiste en el acto: si sólo se
+  // actualizara el estado, habría hasta 5s (el intervalo de autoguardado) en
+  // los que un cierre del navegador dejaría el recibo sin consumir en disco y
+  // se cobraría dos veces al recargar.
   const claimOffline = useCallback(() => {
     if (!offline) return;
-    setState((s) => claimOfflinePure(s, offline));
+    const next = claimOfflinePure(stateRef.current, offline);
+    setState(next);
+    persist(next);
     setOffline(null);
   }, [offline]);
 
-  const dismissOffline = useCallback(() => setOffline(null), []);
+  const dismissOffline = useCallback(() => {
+    const next = dismissOfflinePure(stateRef.current);
+    setState(next);
+    persist(next);
+    setOffline(null);
+  }, []);
 
   const markAlienDialogSeen = useCallback(
     () => setState((s) => (s.alienDialogSeen ? s : { ...s, alienDialogSeen: true })),
@@ -269,16 +290,47 @@ export function useGame() {
       ),
     [],
   );
-  const debugSetIncome = useCallback(
-    (perSec: number) =>
-      setState((s) => ({
+  /**
+   * Ajusta el ingreso por segundo al objetivo indicado subiendo el nivel de
+   * mejora de la Limonada. Tiene en cuenta el resto de negocios, las parcelas
+   * y el multiplicador de prestigio, así que el resultado es el que se pide.
+   */
+  const debugSetIncome = useCallback((perSec: number) => {
+    setState((s) => {
+      const target = Math.max(0, Number.isFinite(perSec) ? perSec : 0);
+      const def = businessDef(DEBUG_BUSINESS);
+      if (!def) return s;
+
+      const othersIncome = BUSINESSES.filter((b) => b.id !== DEBUG_BUSINESS).reduce(
+        (sum, b) => sum + businessIncome(b, s),
+        0,
+      );
+      const remaining = Math.max(0, target - othersIncome);
+      const divisor = def.baseIncome * plotBonusForBusiness(s, DEBUG_BUSINESS) * rebirthMultiplier(s);
+
+      // El ingreso sólo puede tomar valores discretos (unidades x 2^nivel), así
+      // que se busca la combinación que más se acerca al objetivo. Redondear el
+      // logaritmo sin más daba saltos de hasta x1,6 (pedir 10.000 y obtener 13.107).
+      let best = { level: 0, count: Math.max(1, businessCount(s, DEBUG_BUSINESS)), err: Infinity };
+      if (divisor > 0 && remaining > 0) {
+        for (let level = 0; level <= 60; level++) {
+          const perUnit = divisor * Math.pow(2, level);
+          const count = Math.max(1, Math.round(remaining / perUnit));
+          const err = Math.abs(perUnit * count - remaining) / remaining;
+          if (err < best.err) best = { level, count, err };
+          if (err === 0) break;
+        }
+      } else {
+        best = { level: 0, count: 0, err: 0 };
+      }
+
+      return {
         ...s,
-        // Fuerza un ingreso objetivo subiendo el nivel de mejora del primer negocio.
-        upgrades: { ...s.upgrades, lemonade: Math.max(0, Math.round(Math.log2(perSec || 1))) },
-        businesses: { ...s.businesses, lemonade: Math.max(1, s.businesses.lemonade ?? 1) },
-      })),
-    [],
-  );
+        businesses: { ...s.businesses, [DEBUG_BUSINESS]: best.count },
+        upgrades: { ...s.upgrades, [DEBUG_BUSINESS]: best.level },
+      };
+    });
+  }, []);
 
   const income = useMemo(() => totalIncome(state), [state]);
   const tapWorth = useMemo(() => tapValue(state), [state]);

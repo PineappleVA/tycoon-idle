@@ -31,7 +31,7 @@ import { Tutorial } from './components/Tutorial';
 import { UpgradesTab } from './components/UpgradesTab';
 
 const DEBUG_HOTKEY = 'D';
-const TOUR_START_DELAY_MS = 400;
+const TOUR_POLL_MS = 400;
 const DIALOG_DELAY_MS = 150;
 
 export default function App() {
@@ -49,8 +49,6 @@ export default function App() {
 
   const [godDialog, setGodDialog] = useState(false);
   const [hellDialog, setHellDialog] = useState(false);
-  const [heavenVisitCount, setHeavenVisitCount] = useState(0);
-  const [hellFallCount, setHellFallCount] = useState(0);
   const [lastSoulsGained, setLastSoulsGained] = useState(0);
 
   const [activeTour, setActiveTour] = useState<TourDef | null>(null);
@@ -82,19 +80,26 @@ export default function App() {
     }
   }, []);
 
+  // El estado del juego se lee por ref: si el efecto dependiera de `state`,
+  // el temporizador se reiniciaría en cada tick (100ms) y nunca llegaría a los
+  // 400ms, así que ningún tutorial aparecía mientras había ingresos pasivos.
+  const tourCtxRef = useRef({ state, achievementsDone });
+  tourCtxRef.current = { state, achievementsDone };
+
   useEffect(() => {
     if (activeTour) return;
-    const t = window.setTimeout(() => {
+    const id = window.setInterval(() => {
+      const { state: s, achievementsDone: done } = tourCtxRef.current;
       const candidate = TOURS.find(
         (tour) =>
           !seenToursRef.current.has(tour.id) &&
-          tour.when(state, achievementsDone) &&
+          tour.when(s, done) &&
           (!tour.requires || document.querySelector(tour.requires)),
       );
       if (candidate) setActiveTour(candidate);
-    }, TOUR_START_DELAY_MS);
-    return () => window.clearTimeout(t);
-  }, [state, achievementsDone, activeTour]);
+    }, TOUR_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [activeTour]);
 
   const finishTour = useCallback(() => {
     const current = activeTour;
@@ -136,10 +141,8 @@ export default function App() {
       pendingOutcome.current = null;
       const result = game.rebirthTier(3, outcome);
       if (result.outcome === 'heaven') {
-        setHeavenVisitCount((v) => v + 1);
         window.setTimeout(() => setGodDialog(true), DIALOG_DELAY_MS);
       } else {
-        setHellFallCount((v) => v + 1);
         setLastSoulsGained(result.soulsGained);
         window.setTimeout(() => setHellDialog(true), DIALOG_DELAY_MS);
       }
@@ -231,7 +234,7 @@ export default function App() {
 
       {godDialog && (
         <GodDialog
-          visitCount={heavenVisitCount}
+          visitCount={state.tier3}
           stars={state.stars}
           lifetimeEarned={state.lifetimeEarned}
           onDismiss={() => setGodDialog(false)}
@@ -239,7 +242,7 @@ export default function App() {
       )}
 
       {hellDialog && (
-        <HellDialog fallCount={hellFallCount} soulsGained={lastSoulsGained} onDismiss={() => setHellDialog(false)} />
+        <HellDialog fallCount={state.hellFalls} soulsGained={lastSoulsGained} onDismiss={() => setHellDialog(false)} />
       )}
 
       {selectedDef && (

@@ -82,6 +82,11 @@ export interface GameState {
   souls: number;
   /** Hora local (0-23) en que se cobró el último recibo offline; -1 si nunca. */
   offlineClaimHour: number;
+  /**
+   * Milisegundos jugados en la vida actual, acumulados por el tick.
+   * Existe para que los logros dependan sólo del estado y no de Date.now().
+   */
+  runDurationMs: number;
 }
 
 export interface OfflineResult {
@@ -121,6 +126,7 @@ export const DEFAULT_STATE: GameState = {
   hellFalls: 0,
   souls: 0,
   offlineClaimHour: -1,
+  runDurationMs: 0,
 };
 
 /** Definición de un negocio por id, o null si no existe. */
@@ -756,7 +762,10 @@ export function upgradeTap(state: GameState): GameState | null {
 export function tickIncome(state: GameState, deltaMs: number): GameState {
   const clamped = Math.min(Math.max(0, deltaMs), TICK_MAX_DELTA_MS);
   if (clamped <= 0) return state;
-  return earn(state, totalIncome(state) * (clamped / 1000));
+  const earned = earn(state, totalIncome(state) * (clamped / 1000));
+  // La duración se acumula aunque no haya ingresos: un jugador sin negocios
+  // también está jugando.
+  return { ...earned, runDurationMs: state.runDurationMs + clamped };
 }
 
 /* ================================================================== */
@@ -787,9 +796,25 @@ export function computeOffline(state: GameState, now: number): OfflineResult | n
   return { ms, potential, claimed, deducted: potential - claimed, msAtFull, msAtReduced };
 }
 
-/** Cobra el recibo offline y registra la hora local (para el logro Búho Nocturno). */
+/**
+ * Cobra el recibo offline: suma el dinero, registra la hora local (logro Búho
+ * Nocturno) y AVANZA lastSave. Sin ese avance, si el navegador se cerraba antes
+ * del siguiente autoguardado el mismo periodo se podía cobrar otra vez.
+ */
 export function claimOffline(state: GameState, result: OfflineResult, now: number = Date.now()): GameState {
-  return { ...earn(state, result.claimed), offlineClaimHour: new Date(now).getHours() };
+  return {
+    ...earn(state, result.claimed),
+    offlineClaimHour: new Date(now).getHours(),
+    lastSave: Math.max(state.lastSave, now),
+  };
+}
+
+/**
+ * Descarta el recibo sin cobrarlo. También avanza lastSave: descartar es
+ * renunciar, no aparcar el premio para la próxima recarga.
+ */
+export function dismissOffline(state: GameState, now: number = Date.now()): GameState {
+  return { ...state, lastSave: Math.max(state.lastSave, now) };
 }
 
 /* ================================================================== */
@@ -824,7 +849,8 @@ export function sanitizeState(input: unknown): GameState {
     automated: record<boolean>(raw.automated),
     shopUpgrades: record<number>(raw.shopUpgrades),
     plotAssignments: record<string>(raw.plotAssignments),
-    lastSave: num(raw.lastSave, Date.now()) || Date.now(),
+    // Un lastSave en el futuro bloquearía el cálculo offline para siempre.
+    lastSave: Math.min(num(raw.lastSave, Date.now()) || Date.now(), Date.now()),
     runStartedAt: num(raw.runStartedAt, Date.now()) || Date.now(),
     rebirths: Math.floor(num(raw.rebirths)),
     crystals: num(raw.crystals),
@@ -840,6 +866,7 @@ export function sanitizeState(input: unknown): GameState {
     hellFalls: Math.floor(num(raw.hellFalls)),
     souls: num(raw.souls),
     offlineClaimHour: typeof raw.offlineClaimHour === 'number' ? raw.offlineClaimHour : -1,
+    runDurationMs: num(raw.runDurationMs),
   };
 
   // Los negocios y mejoras desconocidos se descartan: si cambia el catálogo,

@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { formatMoney } from '../game/format';
 import { TAP_VALUE_PER_LEVEL } from '../game/balance';
@@ -65,10 +65,15 @@ export const TapPanel = forwardRef<
     [onTap, tapWorth, tapLevel, spawn],
   );
 
-  // Partículas de ingreso pasivo.
+  // Partículas de ingreso pasivo. `income` se lee por ref: cambia en cada tick
+  // y si estuviera en las dependencias el intervalo se recrearía 10 veces/s.
+  const incomeRef = useRef(income);
+  incomeRef.current = income;
+
   useEffect(() => {
-    if (income <= 0) return;
     const iv = window.setInterval(() => {
+      const current = incomeRef.current;
+      if (current <= 0) return;
       const el = (ref as React.RefObject<HTMLButtonElement | null>)?.current;
       if (!el) return;
       const w = el.clientWidth;
@@ -76,13 +81,13 @@ export const TapPanel = forwardRef<
       spawn({
         x: w / 2 + (Math.random() - 0.5) * w * 0.5,
         y: h * 0.72,
-        text: '+' + formatMoney(income),
+        text: '+' + formatMoney(current),
         drift: (Math.random() - 0.5) * 30,
         passive: true,
       });
     }, 1_000);
     return () => window.clearInterval(iv);
-  }, [income, ref, spawn]);
+  }, [ref, spawn]);
 
   return (
     <button

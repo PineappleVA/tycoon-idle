@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { BusinessDef } from '../game/data';
 import {
   availableInvestors,
@@ -16,17 +17,6 @@ import {
 } from '../game/logic';
 import { formatMoney, formatNumber } from '../game/format';
 import { GameApi } from '../game/useGame';
-
-const FLAVOR: Record<string, string[]> = {
-  lemonade: ['Frescura artesanal.', 'Cada vaso es una obra maestra.', 'El sol es nuestro aliado.'],
-  newspaper: ['Noticias frescas cada mañana.', 'La verdad, impresa.', 'El poder de la información.'],
-  donut: ['Azúcar + felicidad = $$$', 'El desayuno de los campeones.', 'Adictivos, dicen.'],
-  pizza: ['Masa madre, pasión eterna.', 'Napolitana auténtica.', 'La pizza une familias.'],
-  taxi: ['Movilidad urbana premium.', 'Siempre llegamos.', 'La ciudad es nuestra.'],
-  factory: ['Producción en serie.', 'Eficiencia industrial.', 'Hierro, vapor, progreso.'],
-  tower: ['Oficinas con vistas.', 'El símbolo del poder.', 'Vive en las nubes.'],
-  rocket: ['Al infinito y más allá.', 'El cielo no es el límite.', 'Destino: Marte.'],
-};
 
 export function BusinessDetail({
   game,
@@ -53,8 +43,10 @@ export function BusinessDetail({
   const canUpgrade = count > 0 && state.cash >= nextUpPrice;
   const canAffordManager = state.cash >= managerCost();
 
-  const flavor = FLAVOR[def.id] || ['Construye tu imperio.'];
-  const [flavorIdx] = [Math.floor(Date.now() / 3000) % flavor.length];
+  // Se elige una vez al montar: antes se leía Date.now() en cada render y la
+  // frase rotaba sola mientras el juego hacía tick.
+  const flavor = useMemo(() => def.flavor.length ? def.flavor : ['Construye tu imperio.'], [def]);
+  const flavorIdx = useState(() => Math.floor(Math.random() * flavor.length))[0];
 
   return (
     <div className="pointer-events-auto fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
